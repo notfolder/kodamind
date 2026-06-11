@@ -15,7 +15,7 @@ services:
   # 1. Ollama — local LLM inference (CPU / arm64)
   # ─────────────────────────────────────────────
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.30.7
     container_name: ollama
     restart: unless-stopped
     ports:
@@ -39,7 +39,7 @@ services:
   # 2. Ollama model puller（初回のみ実行してモデルを落とす）
   # ─────────────────────────────────────────────
   ollama-pull:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.30.7
     container_name: ollama-pull
     restart: "no"
     depends_on:
@@ -60,7 +60,7 @@ services:
   # 3. Home Assistant Core
   # ─────────────────────────────────────────────
   homeassistant:
-    image: ghcr.io/home-assistant/home-assistant:stable
+    image: ghcr.io/home-assistant/home-assistant:2026.6.2
     container_name: homeassistant
     restart: unless-stopped
     network_mode: host          # mDNS / デバイス検出に必要
@@ -83,7 +83,7 @@ services:
   #    Wyoming プロトコルで HA と通信 → port 10400
   # ─────────────────────────────────────────────
   openwakeword:
-    image: rhasspy/wyoming-openwakeword:latest
+    image: rhasspy/wyoming-openwakeword:2.1.0
     container_name: openwakeword
     restart: unless-stopped
     ports:
@@ -109,7 +109,7 @@ services:
   #    Wyoming プロトコルで HA と通信 → port 10300
   # ─────────────────────────────────────────────
   wyoming-whisper:
-    image: rhasspy/wyoming-faster-whisper:latest
+    image: rhasspy/wyoming-faster-whisper:3.1.0
     container_name: wyoming-whisper
     restart: unless-stopped
     ports:
@@ -136,7 +136,7 @@ services:
   #    Wyoming プロトコルで HA と通信 → port 10200
   # ─────────────────────────────────────────────
   wyoming-piper:
-    image: rhasspy/wyoming-piper:latest
+    image: rhasspy/wyoming-piper:2.2.2
     container_name: wyoming-piper
     restart: unless-stopped
     ports:
@@ -161,7 +161,7 @@ services:
   #    Ollama を LLM バックエンドとして使用
   # ─────────────────────────────────────────────
   hermes:
-    image: nousresearch/hermes-agent:latest
+    image: nousresearch/hermes-agent:v2026.6.5
     container_name: hermes
     restart: unless-stopped
     depends_on:

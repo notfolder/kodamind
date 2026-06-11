@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **rpi-voice-agent** — Raspberry Pi 5 上で動作する完全ローカルの音声アシスタントスタック。クラウド不要・推論用 API キー不要。
 
-```
+```text
 ウェイクワード ("ok nabu") → openWakeWord → Whisper (STT) → Hermes Agent + Ollama → Piper (TTS) → スピーカー
 ```
 
@@ -38,7 +38,7 @@ bash update.sh
 `docker-compose.yml` で定義される 6 つの Docker サービス:
 
 | サービス | イメージ | ポート | 役割 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `ollama` | `ollama/ollama:latest` | 11434 | ローカル LLM 推論（Pi 5 は CPU のみ） |
 | `homeassistant` | `ghcr.io/home-assistant/home-assistant:stable` | 8123 | 音声パイプライン統合ハブ。mDNS のため `network_mode: host` |
 | `openwakeword` | `rhasspy/wyoming-openwakeword:latest` | 10400 TCP | Wyoming Protocol でウェイクワード検出 |
@@ -56,7 +56,7 @@ bash update.sh
 ### データ永続化
 
 | データ | 保存先 | 管理方法 |
-|---|---|---|
+| --- | --- | --- |
 | Ollama モデルファイル | Docker volume `ollama_data` | volume で永続化 |
 | Whisper モデルファイル | Docker volume `whisper_data` | volume で永続化 |
 | Piper 音声ファイル | Docker volume `piper_data` | volume で永続化 |
@@ -68,8 +68,11 @@ bash update.sh
 ## 環境変数（`.env`）
 
 | 変数名 | 必須 | デフォルト | 説明 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `HERMES_API_KEY` | **必須** | — | Hermes API 認証キー。`openssl rand -hex 32` で生成 |
+| `HA_PASSWORD` | **必須** | — | HA 管理者パスワード（setup.sh が自動作成） |
+| `HA_USERNAME` | **必須** | `admin` | HA 管理者ユーザー名 |
+| `HA_DISPLAY_NAME` | 任意 | `Admin` | HA 表示名 |
 | `OLLAMA_DEFAULT_MODEL` | 任意 | `qwen2.5:3b` | 初回起動時に pull するモデル |
 | `WAKE_WORD` | 任意 | `ok_nabu` | openWakeWord に渡すウェイクワード名 |
 | `TZ` | 任意 | `Asia/Tokyo` | 全サービスのタイムゾーン |
@@ -82,7 +85,7 @@ bash update.sh
 ## Pi 5 推奨モデル
 
 | モデル | サイズ | 速度 | 備考 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `qwen2.5:3b` | 1.9 GB | ~5 t/s | デフォルト推奨 |
 | `qwen2.5:1.5b` | 1.0 GB | ~8 t/s | 軽量・高速 |
 | `gemma3:1b` | 0.8 GB | ~10 t/s | 最軽量 |
@@ -90,16 +93,14 @@ bash update.sh
 
 Pi 5 は GPU アクセラレーション非対応かつ RAM 8GB のため、3B 以下のモデルを使用すること。
 
-## セットアップ後の手動作業
+## セットアップ後の確認
 
-`setup.sh` 完了後、Home Assistant UI（`http://<Pi の IP>:8123`）で一度だけ行う作業:
+`setup.sh` が全工程（オンボーディング・Wyoming Integration・Assist パイプライン）を自動実行する。
+手動作業は不要。以下を確認するだけ:
 
-1. HA オンボーディング（アカウント作成）
-2. Wyoming Integration 追加（3回）: Settings → Devices → Add Integration → "Wyoming Protocol"
-   - openWakeWord: `localhost:10400`
-   - Whisper STT: `localhost:10300`
-   - Piper TTS: `localhost:10200`
-3. Assist パイプラインでウェイクワード・STT・TTS を設定
+1. `http://<Pi の IP>:8123` を開く（ログイン: `HA_USERNAME` / `HA_PASSWORD`）
+2. Settings → Voice Assistants → `rpi-voice-agent` パイプラインが存在することを確認
+3. 存在しない場合は `/config/voice-assistants/pipelines` から手動作成（フォールバック）
 
 ## カスタムウェイクワードの追加
 

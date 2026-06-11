@@ -72,7 +72,7 @@ Piper TTS（テキスト→音声）         ← Wyoming TCP :10200
 
 |項目         |値                                            |
 |-----------|---------------------------------------------|
-|Docker イメージ|`ollama/ollama:latest`                       |
+|Docker イメージ|`ollama/ollama:0.30.7`                       |
 |コンテナ名      |`ollama`                                     |
 |公開ポート      |`11434`                                      |
 |データ永続化     |Docker volume `ollama_data` → `/root/.ollama`|
@@ -106,7 +106,7 @@ Piper TTS（テキスト→音声）         ← Wyoming TCP :10200
 
 |項目         |値                                             |
 |-----------|----------------------------------------------|
-|Docker イメージ|`ghcr.io/home-assistant/home-assistant:stable`|
+|Docker イメージ|`ghcr.io/home-assistant/home-assistant:2026.6.2`|
 |コンテナ名      |`homeassistant`                               |
 |ネットワーク     |`host`（mDNS・デバイス検出に必要）                        |
 |公開ポート      |`8123`（host モードのため直接公開）                       |
@@ -139,12 +139,9 @@ logger:
     homeassistant.components.assist_pipeline: info
 ```
 
-**Wyoming Integration の設定（手動）**
+**Wyoming Integration の設定（自動）**
 
-初回起動後に Web UI から設定する：
-
-- Settings → Devices & Services → Add Integration → “Wyoming Protocol”
-- Host: `localhost` / Port: `10400`（openWakeWord 用）
+`setup.sh` → `scripts/ha-setup.sh` が `/api/config/config_entries/flow` を呼び出して openWakeWord / Whisper / Piper の Wyoming Integration を自動追加する。
 
 -----
 
@@ -152,7 +149,7 @@ logger:
 
 |項目         |値                                                |
 |-----------|-------------------------------------------------|
-|Docker イメージ|`rhasspy/wyoming-openwakeword:latest`            |
+|Docker イメージ|`rhasspy/wyoming-openwakeword:2.1.0`|
 |コンテナ名      |`openwakeword`                                   |
 |公開ポート      |`10400` (TCP)                                    |
 |通信プロトコル    |Wyoming Protocol over TCP                        |
@@ -342,7 +339,8 @@ start
   ├─ 前提チェック
   │    ├─ アーキテクチャ確認（aarch64 のみ）
   │    ├─ .env ファイルの存在確認
-  │    └─ HERMES_API_KEY の設定確認
+  │    ├─ HERMES_API_KEY の設定確認
+  │    └─ HA_PASSWORD の設定確認
   │
   ├─ システムパッケージ更新（apt-get）
   │
@@ -366,29 +364,53 @@ start
   │    ├─ hermes:8642/health（最大 120s）
   │    └─ openwakeword:10400（TCP、最大 60s）
   │
-  └─ 完了メッセージ（アクセス URL・次のステップを表示）
+  ├─ scripts/ha-setup.sh（HA 自動セットアップ）
+  │    ├─ HA 起動待ち（最大 300s）
+  │    ├─ 管理者ユーザー作成（/api/onboarding/users）
+  │    ├─ アクセストークン取得（/auth/token）
+  │    ├─ オンボーディング完了マーク
+  │    ├─ Wyoming サービス起動待ち（TCP、各最大 120s）
+  │    ├─ Wyoming Integration 追加 × 3（/api/config/config_entries/flow）
+  │    │    ├─ openWakeWord :10400
+  │    │    ├─ Whisper STT  :10300
+  │    │    └─ Piper TTS    :10200
+  │    └─ scripts/ha-pipeline-setup.py（Assist パイプライン自動作成）
+  │         ├─ Wyoming エンティティ登録待ち（最大 90s）
+  │         ├─ WebSocket 認証（/api/websocket）
+  │         ├─ entity_registry/list で STT/TTS/WakeWord エンティティを発見
+  │         ├─ assist_pipeline/pipeline/create で "rpi-voice-agent" 作成
+  │         └─ assist_pipeline/pipeline/set_preferred で優先設定
+  │
+  └─ 完了メッセージ（アクセス URL・残り手順を表示）
 ```
 
-### 5.2 初回セットアップ後の手動作業
+### 5.2 初回セットアップ後の確認
 
-1. `http://<PiのIP>:8123` でHome Assistant のアカウント作成
-1. Wyoming Integration の追加（openWakeWord: `localhost:10400`）
-1. Assist パイプラインでウェイクワード設定
-1. Whisper・Piper の追加（任意、`docs/hermes-ha-integration.md` 参照）
+`setup.sh` 実行後、手動作業はなし。以下を確認するだけ：
+
+1. `http://<PiのIP>:8123` を開く（ログイン: `HA_USERNAME` / `HA_PASSWORD`）
+2. Settings → Voice Assistants → `rpi-voice-agent` パイプラインが存在することを確認
+3. パイプラインが表示されない場合は `/config/voice-assistants/pipelines` から手動作成
 
 -----
 
 ## 6. 環境変数定義
 
-|変数名                       |必須    |デフォルト       |説明             |
-|--------------------------|------|------------|---------------|
-|`TZ`                      |任意    |`Asia/Tokyo`|タイムゾーン         |
-|`OLLAMA_DEFAULT_MODEL`    |任意    |`qwen2.5:3b`|デフォルト LLM モデル  |
-|`OLLAMA_KEEP_ALIVE`       |任意    |`5m`        |モデルのメモリ保持時間    |
-|`OLLAMA_NUM_PARALLEL`     |任意    |`1`         |並列推論数          |
-|`OLLAMA_MAX_LOADED_MODELS`|任意    |`1`         |最大ロードモデル数      |
-|`HERMES_API_KEY`          |**必須**|なし          |Hermes API 認証キー|
-|`WAKE_WORD`               |任意    |`ok_nabu`   |ウェイクワード名       |
+|変数名|必須|デフォルト|説明|
+|---|---|---|---|
+|`HERMES_API_KEY`|**必須**|なし|Hermes API 認証キー|
+|`HA_USERNAME`|**必須**|`admin`|HA 管理者ユーザー名|
+|`HA_PASSWORD`|**必須**|なし|HA 管理者パスワード（ha-setup.sh 使用）|
+|`HA_DISPLAY_NAME`|任意|`Admin`|HA 表示名|
+|`TZ`|任意|`Asia/Tokyo`|タイムゾーン|
+|`OLLAMA_DEFAULT_MODEL`|任意|`qwen2.5:3b`|デフォルト LLM モデル|
+|`OLLAMA_KEEP_ALIVE`|任意|`5m`|モデルのメモリ保持時間|
+|`OLLAMA_NUM_PARALLEL`|任意|`1`|並列推論数|
+|`OLLAMA_MAX_LOADED_MODELS`|任意|`1`|最大ロードモデル数|
+|`WAKE_WORD`|任意|`ok_nabu`|ウェイクワード名|
+|`WHISPER_MODEL`|任意|`tiny-int8`|Whisper モデルサイズ|
+|`WHISPER_LANGUAGE`|任意|`ja`|Whisper 認識言語|
+|`PIPER_VOICE`|任意|`ja_JP-takumi-medium`|Piper 使用音声|
 
 -----
 

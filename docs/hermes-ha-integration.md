@@ -1,23 +1,45 @@
 # Hermes Agent × Home Assistant 統合ガイド
 
-## 1. Home Assistant のオンボーディング
+## 1. Home Assistant のオンボーディング（自動）
 
-`setup.sh` 完了後、`http://<Pi のIP>:8123` を開いてアカウント作成と初期設定を完了させてください。
+`setup.sh` を実行すると `scripts/ha-setup.sh` が自動的に以下を処理します。
 
-## 2. Wyoming Integration（openWakeWord）の追加
+- `/api/onboarding/users` で管理者ユーザー作成（`.env` の `HA_USERNAME` / `HA_PASSWORD` を使用）
+- Wyoming Integration (openWakeWord / Whisper STT / Piper TTS) を `/api/config/config_entries/flow` で追加
 
-1. Settings → Devices & Services → **Add Integration**
-2. "Wyoming Protocol" を検索
-3. Host: `localhost`、Port: `10400` を入力
-4. openWakeWord が認識されたら完了
+手動操作は不要です。
 
-## 3. Assist パイプラインの設定
+## 2. Wyoming Integration（自動）
 
-1. Settings → Voice Assistants → **Add Assistant**
-2. Wake Word Engine: **openWakeWord**
-3. Wake Word: `.env` の `WAKE_WORD` で指定したもの（デフォルト: `ok_nabu`）
-4. Speech-to-text: Whisper（後述）
-5. Text-to-speech: Piper（後述）
+`scripts/ha-setup.sh` が以下の Wyoming Integration を自動追加します。
+
+| サービス | ポート |
+| --- | --- |
+| openWakeWord | 10400 |
+| Whisper STT | 10300 |
+| Piper TTS | 10200 |
+
+## 3. Assist パイプラインの設定（自動）
+
+`scripts/ha-setup.sh` が `scripts/ha-pipeline-setup.py` を呼び出して自動設定します。
+
+- WebSocket API (`assist_pipeline/pipeline/create`) でパイプライン `rpi-voice-agent` を作成
+- `config/entity_registry/list` で Wyoming STT・TTS・WakeWord エンティティを自動発見
+- 作成したパイプラインを優先パイプラインとして設定 (`set_preferred`)
+
+設定内容（`.env` から読み取り）:
+
+| 項目 | デフォルト |
+| --- | --- |
+| Wake Word | `WAKE_WORD`（デフォルト: `ok_nabu`） |
+| STT | 自動発見した Wyoming Whisper エンティティ |
+| TTS | 自動発見した Wyoming Piper エンティティ |
+| TTS Voice | `PIPER_VOICE`（デフォルト: `ja_JP-takumi-medium`） |
+| 言語 | `WHISPER_LANGUAGE`（デフォルト: `ja`） |
+
+**確認方法**: `setup.sh` 完了後、`http://<Pi IP>:8123` → Settings → Voice Assistants で `rpi-voice-agent` パイプラインが表示されていれば成功です。
+
+**自動設定に失敗した場合**: `http://<Pi IP>:8123/config/voice-assistants/pipelines` から手動で作成してください。
 
 ## 4. Whisper（STT）の設定
 
@@ -30,8 +52,6 @@
 | `WHISPER_MODEL` | `tiny-int8` | モデルサイズ（`tiny-int8` / `base-int8` / `small-int8`） |
 | `WHISPER_LANGUAGE` | `ja` | 認識言語 |
 
-HA 側: Settings → Devices & Services → Add Integration → "Wyoming Protocol" → Host: `localhost`, Port: `10300`
-
 ## 5. Piper（TTS）の設定
 
 `wyoming-piper` サービスは `docker-compose.yml` に組み込み済みです。`docker compose up -d` で自動起動します。
@@ -41,8 +61,6 @@ HA 側: Settings → Devices & Services → Add Integration → "Wyoming Protoco
 | 変数名 | デフォルト | 説明 |
 | --- | --- | --- |
 | `PIPER_VOICE` | `ja_JP-takumi-medium` | 使用する音声（[Piper 対応音声一覧](https://rhasspy.github.io/piper-samples/)） |
-
-HA 側: Settings → Devices & Services → Add Integration → "Wyoming Protocol" → Host: `localhost`, Port: `10200`
 
 ## 6. Hermes Agent を HA の Conversation Agent として接続
 
@@ -80,3 +98,9 @@ API Key: `.env` の `HERMES_API_KEY`
 2. `.tflite` ファイルを `config/openwakeword/custom_models/` に配置
 3. `.env` の `WAKE_WORD` をモデル名に変更
 4. `docker compose restart openwakeword`
+
+## ha-setup.sh を単独で再実行する場合
+
+HA が既にオンボーディング済みの場合、ha-setup.sh は onboarding API でエラーになります。
+Wyoming Integration の追加だけを再実行したい場合は、access token を手動取得して
+`/api/config/config_entries/flow` を直接呼び出してください。

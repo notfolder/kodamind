@@ -34,6 +34,9 @@ source .env
 [[ -z "${HERMES_API_KEY:-}" || "${HERMES_API_KEY}" == "your-strong-api-key-here" ]] \
   && err "HERMES_API_KEY is not set in .env. Generate one with: openssl rand -hex 32"
 
+[[ -z "${HA_PASSWORD:-}" || "${HA_PASSWORD}" == "your-ha-password-here" ]] \
+  && err "HA_PASSWORD is not set in .env. Set a secure password for the HA admin account."
+
 log "Prerequisites OK"
 
 # ─── 1. システムパッケージ更新 ─────────────────
@@ -177,7 +180,11 @@ while ! nc -z localhost 10400 2>/dev/null; do
 done
 [[ $elapsed -lt 60 ]] && echo " OK" || warn "openwakeword may not be ready"
 
-# ─── 10. 完了メッセージ ─────────────────────────
+# ─── 10. HA 自動セットアップ ────────────────────────
+step "Running Home Assistant automated setup"
+bash "$(dirname "$0")/scripts/ha-setup.sh"
+
+# ─── 11. 完了メッセージ ─────────────────────────
 PI_IP=$(hostname -I | awk '{print $1}')
 
 echo ""
@@ -190,16 +197,15 @@ echo -e "  Ollama API      → ${CYAN}http://${PI_IP}:11434${NC}"
 echo -e "  Hermes Agent    → ${CYAN}http://${PI_IP}:8642${NC}"
 echo -e "  Wake Word       → ${YELLOW}${WAKE_WORD:-ok_nabu}${NC} (TCP port 10400)"
 echo ""
-echo -e "  Next steps:"
-echo -e "  1. Open Home Assistant at http://${PI_IP}:8123 and complete onboarding"
-echo -e "  2. Add Wyoming integration (Settings → Devices → Add Integration → Wyoming Protocol)"
-echo -e "     Host: localhost  Port: 10400  (openWakeWord)"
-echo -e "  3. Set up Assist pipeline with the wake word"
-echo -e "  4. Connect Hermes to HA (see docs/hermes-ha-integration.md)"
+echo -e "  Remaining manual step:"
+echo -e "  Open ${CYAN}http://${PI_IP}:8123${NC} → Settings → Voice Assistants → Add Assistant"
+echo -e "    Wake Word Engine : openWakeWord → ${YELLOW}${WAKE_WORD:-ok_nabu}${NC}"
+echo -e "    Speech-to-text   : Faster Whisper"
+echo -e "    Text-to-speech   : Piper"
 echo ""
 echo -e "  Useful commands:"
-echo -e "  ${CYAN}docker compose logs -f${NC}           # tail all logs"
-echo -e "  ${CYAN}docker compose logs -f hermes${NC}    # tail Hermes only"
-echo -e "  ${CYAN}docker compose restart hermes${NC}    # restart Hermes"
-echo -e "  ${CYAN}bash scripts/pull-model.sh qwen2.5:3b${NC}  # pull a model"
+echo -e "  ${CYAN}docker compose logs -f${NC}               # tail all logs"
+echo -e "  ${CYAN}docker compose logs -f hermes${NC}        # tail Hermes only"
+echo -e "  ${CYAN}docker compose restart hermes${NC}         # restart Hermes"
+echo -e "  ${CYAN}bash pull-model.sh qwen2.5:3b${NC}  # pull a model"
 echo ""

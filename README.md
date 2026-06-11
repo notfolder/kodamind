@@ -36,14 +36,14 @@ cd rpi-voice-agent
 
 # 2. 認証情報を設定（これだけ手動）
 cp .env.example .env
-nano .env   # HERMES_API_KEY を必ず設定
+nano .env   # HERMES_API_KEY と HA_PASSWORD を必ず設定
 
-# 3. ワンコマンドセットアップ
+# 3. ワンコマンドセットアップ（HA オンボーディング・Wyoming 統合追加まで自動）
 bash setup.sh
 ```
 
-セットアップ後、`http://<PiのIP>:8123` で Home Assistant を開いて
-オンボーディングを完了し、Wyoming 統合（openWakeWord）を追加してください。
+セットアップ完了後、`http://<PiのIP>:8123` → Settings → Voice Assistants で
+`rpi-voice-agent` パイプラインが作成されていることを確認してください。
 詳細は `docs/hermes-ha-integration.md` を参照。
 
 ## 日常操作
