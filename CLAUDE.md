@@ -1,0 +1,114 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## プロジェクト概要
+
+**rpi-voice-agent** — Raspberry Pi 5 上で動作する完全ローカルの音声アシスタントスタック。クラウド不要・推論用 API キー不要。
+
+```
+ウェイクワード ("ok nabu") → openWakeWord → Whisper (STT) → Hermes Agent + Ollama → Piper (TTS) → スピーカー
+```
+
+対象ハードウェア: Raspberry Pi 5（8GB RAM）、arm64、Raspberry Pi OS Bookworm 64-bit
+
+## よく使うコマンド
+
+```bash
+# 初回セットアップ（arm64 環境のみ動作）
+cp .env.example .env          # HERMES_API_KEY を必ず設定
+bash setup.sh
+
+# 日常操作
+docker compose up -d          # 全サービス起動
+docker compose down           # 全サービス停止
+docker compose logs -f        # 全ログをストリーミング
+docker compose logs -f hermes # 特定サービスのログ
+docker compose restart hermes # 特定サービスの再起動
+
+# Ollama モデルの追加
+bash pull-model.sh qwen2.5:3b
+
+# イメージ更新
+bash update.sh
+```
+
+## アーキテクチャ
+
+`docker-compose.yml` で定義される 6 つの Docker サービス:
+
+| サービス | イメージ | ポート | 役割 |
+|---|---|---|---|
+| `ollama` | `ollama/ollama:latest` | 11434 | ローカル LLM 推論（Pi 5 は CPU のみ） |
+| `homeassistant` | `ghcr.io/home-assistant/home-assistant:stable` | 8123 | 音声パイプライン統合ハブ。mDNS のため `network_mode: host` |
+| `openwakeword` | `rhasspy/wyoming-openwakeword:latest` | 10400 TCP | Wyoming Protocol でウェイクワード検出 |
+| `wyoming-whisper` | `rhasspy/wyoming-faster-whisper:latest` | 10300 TCP | STT（音声→テキスト）。モデルは初回起動時に自動 DL |
+| `wyoming-piper` | `rhasspy/wyoming-piper:latest` | 10200 TCP | TTS（テキスト→音声）。音声ファイルは初回起動時に自動 DL |
+| `hermes` | `nousresearch/hermes-agent:latest` | 8642 | 記憶・スキル付き自律エージェント。ollama の healthcheck 通過後に起動 |
+
+**`ollama-pull`** は `restart: "no"` のワンショットコンテナ。初回起動時に `OLLAMA_DEFAULT_MODEL` で指定したモデルを pull する。
+
+### コンテナ間通信
+
+- Home Assistant は `network_mode: host` → openWakeWord に `localhost:10400` で直接アクセス
+- Hermes → Ollama は Docker 内部 DNS で `http://ollama:11434` にアクセス
+
+### データ永続化
+
+| データ | 保存先 | 管理方法 |
+|---|---|---|
+| Ollama モデルファイル | Docker volume `ollama_data` | volume で永続化 |
+| Whisper モデルファイル | Docker volume `whisper_data` | volume で永続化 |
+| Piper 音声ファイル | Docker volume `piper_data` | volume で永続化 |
+| Hermes 記憶・スキル・セッション | Docker volume `hermes_data` | volume で永続化 |
+| HA 設定ファイル | `./config/homeassistant/` | Git 管理 |
+| カスタムウェイクワードモデル | `./config/openwakeword/custom_models/` | Git 管理 |
+| 認証情報 | `.env` | **Git 管理対象外** |
+
+## 環境変数（`.env`）
+
+| 変数名 | 必須 | デフォルト | 説明 |
+|---|---|---|---|
+| `HERMES_API_KEY` | **必須** | — | Hermes API 認証キー。`openssl rand -hex 32` で生成 |
+| `OLLAMA_DEFAULT_MODEL` | 任意 | `qwen2.5:3b` | 初回起動時に pull するモデル |
+| `WAKE_WORD` | 任意 | `ok_nabu` | openWakeWord に渡すウェイクワード名 |
+| `TZ` | 任意 | `Asia/Tokyo` | 全サービスのタイムゾーン |
+| `OLLAMA_KEEP_ALIVE` | 任意 | `5m` | モデルをメモリに保持する時間 |
+| `OLLAMA_NUM_PARALLEL` | 任意 | `1` | 並列推論数（Pi 5 では 1 推奨） |
+| `WHISPER_MODEL` | 任意 | `tiny-int8` | Whisper モデルサイズ（`base-int8` で精度向上） |
+| `WHISPER_LANGUAGE` | 任意 | `ja` | Whisper 認識言語 |
+| `PIPER_VOICE` | 任意 | `ja_JP-takumi-medium` | Piper 音声（[一覧](https://rhasspy.github.io/piper-samples/)） |
+
+## Pi 5 推奨モデル
+
+| モデル | サイズ | 速度 | 備考 |
+|---|---|---|---|
+| `qwen2.5:3b` | 1.9 GB | ~5 t/s | デフォルト推奨 |
+| `qwen2.5:1.5b` | 1.0 GB | ~8 t/s | 軽量・高速 |
+| `gemma3:1b` | 0.8 GB | ~10 t/s | 最軽量 |
+| `llama3.2:3b` | 2.0 GB | ~5 t/s | 英語タスク向け |
+
+Pi 5 は GPU アクセラレーション非対応かつ RAM 8GB のため、3B 以下のモデルを使用すること。
+
+## セットアップ後の手動作業
+
+`setup.sh` 完了後、Home Assistant UI（`http://<Pi の IP>:8123`）で一度だけ行う作業:
+
+1. HA オンボーディング（アカウント作成）
+2. Wyoming Integration 追加（3回）: Settings → Devices → Add Integration → "Wyoming Protocol"
+   - openWakeWord: `localhost:10400`
+   - Whisper STT: `localhost:10300`
+   - Piper TTS: `localhost:10200`
+3. Assist パイプラインでウェイクワード・STT・TTS を設定
+
+## カスタムウェイクワードの追加
+
+1. `.tflite` ファイルを `config/openwakeword/custom_models/` に配置
+2. `.env` の `WAKE_WORD=<モデル名（拡張子なし）>` を変更
+3. `docker compose restart openwakeword`
+
+## 主要ドキュメント
+
+- [docs/hermes-ha-integration.md](docs/hermes-ha-integration.md) — Whisper・Piper の設定変数と HA 側の Wyoming Integration 追加手順
+- [docs/design.md](docs/design.md) — 詳細設計書（コンポーネント仕様・ネットワーク図・ヘルスチェック設計）
+- [docs/requirements.md](docs/requirements.md) — 要件定義書
