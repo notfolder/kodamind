@@ -133,18 +133,22 @@ log "Place .tflite model files here to use custom wake words."
 step "Setting up Hermes config directory"
 mkdir -p config/hermes
 
-# ─── 7. Docker イメージを事前取得 ───────────────
+# ─── 7. setup コンテナイメージをビルド ───────────
+step "Building setup container image"
+docker compose build setup
+
+# ─── 8. Docker イメージを事前取得 ───────────────
 step "Pulling Docker images (this may take several minutes on Pi 5)"
 docker compose pull
 
-# ─── 8. スタック起動 ────────────────────────────
+# ─── 9. スタック起動 ────────────────────────────
 step "Starting all services"
 docker compose up -d
 
 log "Waiting for services to start..."
 sleep 15
 
-# ─── 9. ヘルスチェック ──────────────────────────
+# ─── 10. ヘルスチェック ─────────────────────────
 step "Health checks"
 check_service() {
   local name="$1"
@@ -180,11 +184,27 @@ while ! nc -z localhost 10400 2>/dev/null; do
 done
 [[ $elapsed -lt 60 ]] && echo " OK" || warn "openwakeword may not be ready"
 
-# ─── 10. HA 自動セットアップ ────────────────────────
-step "Running Home Assistant automated setup"
-bash "$(dirname "$0")/scripts/ha-setup.sh"
+# ─── 11. setup コンテナ完了待ち ──────────────────
+step "Waiting for initialization container to complete"
+log "To monitor: docker compose logs -f setup"
+elapsed=0
+until docker inspect setup --format='{{.State.Status}}' 2>/dev/null | grep -q "exited"; do
+  sleep 5; elapsed=$((elapsed + 5)); printf "."
+  if [[ $elapsed -ge 600 ]]; then
+    echo ""
+    warn "Initialization timed out after 600s. Check: docker compose logs setup"
+    break
+  fi
+done
+echo ""
+setup_exit=$(docker inspect setup --format='{{.State.ExitCode}}' 2>/dev/null || echo "1")
+if [[ "$setup_exit" == "0" ]]; then
+  log "Initialization complete"
+else
+  warn "Initialization failed (exit: ${setup_exit}). Check: docker compose logs setup"
+fi
 
-# ─── 11. 完了メッセージ ─────────────────────────
+# ─── 12. 完了メッセージ ─────────────────────────
 PI_IP=$(hostname -I | awk '{print $1}')
 
 echo ""
@@ -197,15 +217,13 @@ echo -e "  Ollama API      → ${CYAN}http://${PI_IP}:11434${NC}"
 echo -e "  Hermes Agent    → ${CYAN}http://${PI_IP}:8642${NC}"
 echo -e "  Wake Word       → ${YELLOW}${WAKE_WORD:-ok_nabu}${NC} (TCP port 10400)"
 echo ""
-echo -e "  Remaining manual step:"
-echo -e "  Open ${CYAN}http://${PI_IP}:8123${NC} → Settings → Voice Assistants → Add Assistant"
-echo -e "    Wake Word Engine : openWakeWord → ${YELLOW}${WAKE_WORD:-ok_nabu}${NC}"
-echo -e "    Speech-to-text   : Faster Whisper"
-echo -e "    Text-to-speech   : Piper"
+echo -e "  Verify: Settings → Voice Assistants → ${YELLOW}rpi-voice-agent${NC} pipeline"
+echo -e "  Fallback: ${CYAN}http://${PI_IP}:8123/config/voice-assistants/pipelines${NC}"
 echo ""
 echo -e "  Useful commands:"
 echo -e "  ${CYAN}docker compose logs -f${NC}               # tail all logs"
+echo -e "  ${CYAN}docker compose logs -f setup${NC}         # tail setup container"
 echo -e "  ${CYAN}docker compose logs -f hermes${NC}        # tail Hermes only"
-echo -e "  ${CYAN}docker compose restart hermes${NC}         # restart Hermes"
-echo -e "  ${CYAN}bash pull-model.sh qwen2.5:3b${NC}  # pull a model"
+echo -e "  ${CYAN}docker compose restart hermes${NC}        # restart Hermes"
+echo -e "  ${CYAN}bash pull-model.sh qwen2.5:3b${NC}       # pull a model"
 echo ""

@@ -45,6 +45,7 @@ bash update.sh
 | `wyoming-whisper` | `rhasspy/wyoming-faster-whisper:latest` | 10300 TCP | STT（音声→テキスト）。モデルは初回起動時に自動 DL |
 | `wyoming-piper` | `rhasspy/wyoming-piper:latest` | 10200 TCP | TTS（テキスト→音声）。音声ファイルは初回起動時に自動 DL |
 | `hermes` | `nousresearch/hermes-agent:latest` | 8642 | 記憶・スキル付き自律エージェント。ollama の healthcheck 通過後に起動 |
+| `setup` | `setup/Dockerfile`（ローカルビルド） | — | HA 初期化・Wyoming 統合・Assist パイプライン作成（ワンショット）。全依存サービス healthy 後に実行 |
 
 **`ollama-pull`** は `restart: "no"` のワンショットコンテナ。初回起動時に `OLLAMA_DEFAULT_MODEL` で指定したモデルを pull する。
 

@@ -141,7 +141,7 @@ logger:
 
 **Wyoming Integration の設定（自動）**
 
-`setup.sh` → `scripts/ha-setup.sh` が `/api/config/config_entries/flow` を呼び出して openWakeWord / Whisper / Piper の Wyoming Integration を自動追加する。
+`setup` コンテナ（`scripts/ha-setup.sh`）が `/api/config/config_entries/flow` を呼び出して openWakeWord / Whisper / Piper の Wyoming Integration を自動追加する。
 
 -----
 
@@ -216,7 +216,29 @@ hermes_data (Docker volume)
 
 -----
 
-### 2.5 wyoming-faster-whisper（STT）
+### 2.5 setup（初期化コンテナ）
+
+|項目|値|
+|---|---|
+|Docker イメージ|`setup/Dockerfile`（ローカルビルド、`python:3.12-slim` ベース）|
+|コンテナ名|`setup`|
+|再起動ポリシー|`restart: "no"`（ワンショット）|
+|ネットワーク|`host`（`localhost:8123` に到達するために必須）|
+|依存関係|`homeassistant` / `openwakeword` / `wyoming-whisper` / `wyoming-piper` の healthy、かつ `ollama-pull` の completed_successfully|
+|実行内容|`bash /scripts/ha-setup.sh` → `python3 /scripts/ha-pipeline-setup.py`|
+
+#### マウントするパス
+
+|ホストパス|コンテナパス|用途|
+|---|---|---|
+|`./scripts`|`/scripts` (ro)|ha-setup.sh・ha-pipeline-setup.py|
+|`./config`|`/config`|将来の設定ファイル操作に備えて書き込み可|
+
+将来の初期化処理（追加サービス設定・証明書生成等）はすべてこのコンテナの entrypoint スクリプトに追加する。
+
+-----
+
+### 2.6 wyoming-faster-whisper（STT）
 
 |項目|値|
 |---|---|
@@ -247,7 +269,7 @@ hermes_data (Docker volume)
 
 -----
 
-### 2.6 wyoming-piper（TTS）
+### 2.7 wyoming-piper（TTS）
 
 |項目|値|
 |---|---|
@@ -308,9 +330,14 @@ rpi-voice-agent/
 ├── .env.example                    # 環境変数テンプレート
 ├── .env                            # 実際の認証情報（.gitignore 済み）
 ├── .gitignore
-├── setup.sh                        # 初期セットアップスクリプト
+├── setup.sh                        # 初期セットアップスクリプト（ホスト側）
+│
+├── setup/
+│   └── Dockerfile                  # setup コンテナのイメージ定義
 │
 ├── scripts/
+│   ├── ha-setup.sh                 # HA API 自動設定（setup コンテナ内で実行）
+│   ├── ha-pipeline-setup.py        # Assist パイプライン作成（Python3 stdlib）
 │   ├── pull-model.sh               # Ollama モデル追加
 │   └── update.sh                   # イメージ更新・再起動
 │
@@ -333,55 +360,67 @@ rpi-voice-agent/
 
 ### 5.1 setup.sh の処理フロー
 
-```
+```text
 start
   │
-  ├─ 前提チェック
+  ├─ 前提チェック（ホスト側）
   │    ├─ アーキテクチャ確認（aarch64 のみ）
   │    ├─ .env ファイルの存在確認
   │    ├─ HERMES_API_KEY の設定確認
   │    └─ HA_PASSWORD の設定確認
   │
-  ├─ システムパッケージ更新（apt-get）
+  ├─ システムパッケージ更新（apt-get）          ← ホスト側のみ
   │
-  ├─ Docker インストール（未インストールの場合のみ）
+  ├─ Docker インストール（未インストールの場合のみ）  ← ホスト側のみ
   │
   ├─ 音声デバイス確認（aplay / arecord）
   │
   ├─ HA 設定ファイル初期化（configuration.yaml 生成）
+  │    └─ HA 起動前に必要なためホスト側で実行
   │
-  ├─ ディレクトリ作成
+  ├─ ディレクトリ作成（コンテナ起動前に必要）
   │    ├─ config/openwakeword/custom_models/
   │    └─ config/hermes/
+  │
+  ├─ setup イメージビルド（docker compose build setup）
   │
   ├─ Docker イメージ pull（docker compose pull）
   │
   ├─ サービス起動（docker compose up -d）
+  │    └─ setup コンテナは依存サービスの healthy 後に自動起動
   │
-  ├─ ヘルスチェック（各サービスが応答するまで待機）
+  ├─ ヘルスチェック（主要サービスの起動確認）
   │    ├─ ollama:11434/api/tags（最大 120s）
   │    ├─ homeassistant:8123（最大 180s）
   │    ├─ hermes:8642/health（最大 120s）
   │    └─ openwakeword:10400（TCP、最大 60s）
   │
-  ├─ scripts/ha-setup.sh（HA 自動セットアップ）
-  │    ├─ HA 起動待ち（最大 300s）
-  │    ├─ 管理者ユーザー作成（/api/onboarding/users）
-  │    ├─ アクセストークン取得（/auth/token）
-  │    ├─ オンボーディング完了マーク
-  │    ├─ Wyoming サービス起動待ち（TCP、各最大 120s）
-  │    ├─ Wyoming Integration 追加 × 3（/api/config/config_entries/flow）
-  │    │    ├─ openWakeWord :10400
-  │    │    ├─ Whisper STT  :10300
-  │    │    └─ Piper TTS    :10200
-  │    └─ scripts/ha-pipeline-setup.py（Assist パイプライン自動作成）
-  │         ├─ Wyoming エンティティ登録待ち（最大 90s）
-  │         ├─ WebSocket 認証（/api/websocket）
-  │         ├─ entity_registry/list で STT/TTS/WakeWord エンティティを発見
-  │         ├─ assist_pipeline/pipeline/create で "rpi-voice-agent" 作成
-  │         └─ assist_pipeline/pipeline/set_preferred で優先設定
+  ├─ setup コンテナ完了待ち（最大 600s）
+  │    └─ docker inspect setup で exited を確認
   │
-  └─ 完了メッセージ（アクセス URL・残り手順を表示）
+  └─ 完了メッセージ（アクセス URL を表示）
+```
+
+**setup コンテナの処理（`scripts/ha-setup.sh` → `scripts/ha-pipeline-setup.py`）:**
+
+```text
+setup コンテナ起動（depends_on 全依存 healthy 後）
+  │
+  ├─ HA 起動待ち（最大 300s）
+  ├─ 管理者ユーザー作成（/api/onboarding/users）
+  ├─ アクセストークン取得（/auth/token）
+  ├─ オンボーディング完了マーク
+  ├─ Wyoming サービス起動待ち（TCP、各最大 120s）
+  ├─ Wyoming Integration 追加 × 3（/api/config/config_entries/flow）
+  │    ├─ openWakeWord :10400
+  │    ├─ Whisper STT  :10300
+  │    └─ Piper TTS    :10200
+  └─ ha-pipeline-setup.py（Assist パイプライン自動作成）
+       ├─ Wyoming エンティティ登録待ち（最大 90s）
+       ├─ WebSocket 認証（/api/websocket）
+       ├─ entity_registry/list で STT/TTS/WakeWord エンティティを発見
+       ├─ assist_pipeline/pipeline/create で "rpi-voice-agent" 作成
+       └─ assist_pipeline/pipeline/set_preferred で優先設定
 ```
 
 ### 5.2 初回セットアップ後の確認
@@ -445,7 +484,7 @@ start
 |---|---|---|
 |Pi 5 GPU 非対応|Ollama は CPU のみ動作|3B 以下のモデルを使用|
 |LLM 応答速度|3B モデルで約 5 tokens/sec|軽量モデル選定・量子化モデル使用|
-|HA オンボーディング|初回のみ手動操作が必要|README・ドキュメントで手順を明示|
+|setup コンテナの初回ビルド|`docker compose build setup` が必要（ローカルイメージ）|`setup.sh` が自動実行|
 |Whisper 初回起動|モデルダウンロードに数分かかる|`start_period: 60s` を設定済み|
 |Piper 初回起動|音声ファイルダウンロードに数分かかる|`start_period: 60s` を設定済み|
 |Ollama 認証なし|デフォルトでは認証不要|ローカル LAN に限定、必要に応じてファイアウォール設定|

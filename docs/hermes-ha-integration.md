@@ -2,7 +2,7 @@
 
 ## 1. Home Assistant のオンボーディング（自動）
 
-`setup.sh` を実行すると `scripts/ha-setup.sh` が自動的に以下を処理します。
+`setup.sh` を実行すると `setup` コンテナ（`scripts/ha-setup.sh`）が自動的に以下を処理します。
 
 - `/api/onboarding/users` で管理者ユーザー作成（`.env` の `HA_USERNAME` / `HA_PASSWORD` を使用）
 - Wyoming Integration (openWakeWord / Whisper STT / Piper TTS) を `/api/config/config_entries/flow` で追加
@@ -11,7 +11,7 @@
 
 ## 2. Wyoming Integration（自動）
 
-`scripts/ha-setup.sh` が以下の Wyoming Integration を自動追加します。
+`setup` コンテナが以下の Wyoming Integration を自動追加します。
 
 | サービス | ポート |
 | --- | --- |
@@ -21,7 +21,7 @@
 
 ## 3. Assist パイプラインの設定（自動）
 
-`scripts/ha-setup.sh` が `scripts/ha-pipeline-setup.py` を呼び出して自動設定します。
+`setup` コンテナ（`scripts/ha-setup.sh`）が `scripts/ha-pipeline-setup.py` を呼び出して自動設定します。
 
 - WebSocket API (`assist_pipeline/pipeline/create`) でパイプライン `rpi-voice-agent` を作成
 - `config/entity_registry/list` で Wyoming STT・TTS・WakeWord エンティティを自動発見
@@ -99,8 +99,8 @@ API Key: `.env` の `HERMES_API_KEY`
 3. `.env` の `WAKE_WORD` をモデル名に変更
 4. `docker compose restart openwakeword`
 
-## ha-setup.sh を単独で再実行する場合
+## setup コンテナを単独で再実行する場合
 
-HA が既にオンボーディング済みの場合、ha-setup.sh は onboarding API でエラーになります。
+HA が既にオンボーディング済みの場合、`ha-setup.sh` は onboarding API でエラーになります。
 Wyoming Integration の追加だけを再実行したい場合は、access token を手動取得して
 `/api/config/config_entries/flow` を直接呼び出してください。

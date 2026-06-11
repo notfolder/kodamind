@@ -8,9 +8,7 @@
 #   2. アクセストークン取得 (/auth/token)
 #   3. オンボーディング完了マーク
 #   4. Wyoming Integration 追加 × 3 (openWakeWord / Whisper / Piper)
-#
-# 手動作業として残るもの:
-#   - Assist パイプライン設定 (Settings → Voice Assistants → Add Assistant)
+#   5. Assist パイプライン作成 (ha-pipeline-setup.py)
 
 set -euo pipefail
 
@@ -30,7 +28,7 @@ HA_PASSWORD="${HA_PASSWORD:-}"
 HA_DISPLAY_NAME="${HA_DISPLAY_NAME:-Admin}"
 
 [[ -z "${HA_PASSWORD:-}" || "${HA_PASSWORD}" == "your-ha-password-here" ]] \
-  && err "HA_PASSWORD is not set in .env. Set a secure password."
+  && err "HA_PASSWORD is not set or is using the default value. Set a secure password in .env."
 
 # ─── 1. HA 起動待ち ───────────────────────────────────
 log "Waiting for Home Assistant to be ready..."
