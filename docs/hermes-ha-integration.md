@@ -62,21 +62,39 @@
 | --- | --- | --- |
 | `PIPER_VOICE` | `ja_JP-takumi-medium` | 使用する音声（[Piper 対応音声一覧](https://rhasspy.github.io/piper-samples/)） |
 
-## 6. Hermes Agent を HA の Conversation Agent として接続
+## 6. Hermes Agent を HA の Conversation Agent として接続（自動）
 
-コミュニティ製統合を使用します：
+`setup.sh` が以下を自動処理します。
+
+1. `git submodule update --init` で `config/homeassistant/custom_components/hermes_agent/` を配置（HA 起動前）
+2. HA 起動時に custom_component を自動ロード
+3. `setup` コンテナが `/api/config/config_entries/flow` で Hermes Agent インテグレーションを自動追加
+
+バージョン管理は git submodule（`.gitmodules`）で行います。コミットハッシュが固定されるため、意図しないアップデートが起きません。
+
+**確認方法**: Settings → Integrations に "Hermes Agent" が表示されていれば成功です。
+
+**自動設定に失敗した場合**（custom component が読み込まれていないケース）:
 
 ```bash
-# HA の custom_components ディレクトリに配置
-cd config/homeassistant
-mkdir -p custom_components
-git clone https://github.com/rusty4444/hermes-voice-ha-integration \
-  custom_components/hermes_agent
+# submodule を初期化してから HA を再起動
+git submodule update --init --recursive
+docker compose restart homeassistant
 ```
 
-その後 HA を再起動し、Settings → Integrations から "Hermes Agent" を追加。
-Hermes API URL: `http://localhost:8642`
-API Key: `.env` の `HERMES_API_KEY`
+その後 Settings → Integrations → Add Integration → "Hermes Agent" を選択して手動追加:
+
+- Hermes API URL: `http://localhost:8642`
+- API Key: `.env` の `HERMES_API_KEY`
+
+**submodule を最新版に更新する場合**:
+
+```bash
+git submodule update --remote config/homeassistant/custom_components/hermes_agent
+git add config/homeassistant/custom_components/hermes_agent
+git commit -m "chore: update hermes-voice-ha-integration"
+docker compose restart homeassistant
+```
 
 ## 7. 音声パイプライン全体像
 

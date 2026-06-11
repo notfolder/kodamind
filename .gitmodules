@@ -1,0 +1,3 @@
+[submodule "config/homeassistant/custom_components/hermes_agent"]
+	path = config/homeassistant/custom_components/hermes_agent
+	url = https://github.com/rusty4444/hermes-voice-ha-integration

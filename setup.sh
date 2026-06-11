@@ -133,22 +133,32 @@ log "Place .tflite model files here to use custom wake words."
 step "Setting up Hermes config directory"
 mkdir -p config/hermes
 
-# ─── 7. setup コンテナイメージをビルド ───────────
+# ─── 7. git submodule 初期化（custom_components） ─
+step "Initializing git submodules"
+if git -C "$(dirname "$0")" rev-parse --is-inside-work-tree 2>/dev/null; then
+  git -C "$(dirname "$0")" submodule update --init --recursive
+  log "Submodules initialized (Hermes HA integration custom component)"
+else
+  warn "Not a git repository — submodules skipped."
+  warn "Clone with: git clone --recurse-submodules <repo-url>"
+fi
+
+# ─── 8. setup コンテナイメージをビルド ───────────
 step "Building setup container image"
 docker compose build setup
 
-# ─── 8. Docker イメージを事前取得 ───────────────
+# ─── 9. Docker イメージを事前取得 ───────────────
 step "Pulling Docker images (this may take several minutes on Pi 5)"
 docker compose pull
 
-# ─── 9. スタック起動 ────────────────────────────
+# ─── 10. スタック起動 ───────────────────────────
 step "Starting all services"
 docker compose up -d
 
 log "Waiting for services to start..."
 sleep 15
 
-# ─── 10. ヘルスチェック ─────────────────────────
+# ─── 11. ヘルスチェック ─────────────────────────
 step "Health checks"
 check_service() {
   local name="$1"
@@ -184,7 +194,7 @@ while ! nc -z localhost 10400 2>/dev/null; do
 done
 [[ $elapsed -lt 60 ]] && echo " OK" || warn "openwakeword may not be ready"
 
-# ─── 11. setup コンテナ完了待ち ──────────────────
+# ─── 12. setup コンテナ完了待ち ──────────────────
 step "Waiting for initialization container to complete"
 log "To monitor: docker compose logs -f setup"
 elapsed=0
@@ -204,7 +214,7 @@ else
   warn "Initialization failed (exit: ${setup_exit}). Check: docker compose logs setup"
 fi
 
-# ─── 12. 完了メッセージ ─────────────────────────
+# ─── 13. 完了メッセージ ─────────────────────────
 PI_IP=$(hostname -I | awk '{print $1}')
 
 echo ""

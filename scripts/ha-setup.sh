@@ -149,7 +149,36 @@ add_wyoming_integration() {
 [[ "$wyoming_10300_ready" == "true" ]] && add_wyoming_integration "Whisper STT"  10300
 [[ "$wyoming_10200_ready" == "true" ]] && add_wyoming_integration "Piper TTS"    10200
 
-# ─── 7. Assist パイプライン自動作成 ─────────────────────
+# ─── 7. Hermes Agent Integration 追加 ────────────
+HERMES_URL="${HERMES_URL:-http://localhost:8642}"
+log "Adding Hermes Agent integration (custom_component: hermes_agent)..."
+
+hermes_flow=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/flow" \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"handler": "hermes_agent"}') || true
+
+hermes_flow_id=$(echo "${hermes_flow:-}" | jq -r '.flow_id // empty' 2>/dev/null || true)
+
+if [[ -n "$hermes_flow_id" ]]; then
+  hermes_result=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/flow/${hermes_flow_id}" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d "{\"url\": \"${HERMES_URL}\", \"api_key\": \"${HERMES_API_KEY:-}\"}") || true
+  hermes_type=$(echo "${hermes_result:-}" | jq -r '.type // "unknown"' 2>/dev/null || echo "unknown")
+  if [[ "$hermes_type" == "create_entry" ]]; then
+    log "  Hermes Agent integration added"
+  else
+    warn "  Hermes Agent config flow result: '${hermes_type}'"
+    warn "  If failed: Settings → Integrations → Add → Hermes Agent"
+    warn "  URL: ${HERMES_URL}  /  API Key: (HERMES_API_KEY)"
+  fi
+else
+  warn "  hermes_agent handler not found — custom component may not be loaded"
+  warn "  Ensure git submodule is initialized: git submodule update --init"
+fi
+
+# ─── 8. Assist パイプライン自動作成 ─────────────────────
 log "Creating Assist pipeline via WebSocket API..."
 HA_URL="${HA_URL}" \
 WAKE_WORD="${WAKE_WORD:-ok_nabu}" \

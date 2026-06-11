@@ -223,6 +223,8 @@ services:
       - HA_USERNAME=${HA_USERNAME:-admin}
       - HA_PASSWORD=${HA_PASSWORD}
       - HA_DISPLAY_NAME=${HA_DISPLAY_NAME:-Admin}
+      - HERMES_API_KEY=${HERMES_API_KEY}
+      - HERMES_URL=http://localhost:8642
       - WAKE_WORD=${WAKE_WORD:-ok_nabu}
       - WHISPER_LANGUAGE=${WHISPER_LANGUAGE:-ja}
       - PIPER_VOICE=${PIPER_VOICE:-ja_JP-takumi-medium}
