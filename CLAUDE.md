@@ -44,7 +44,7 @@ bash update.sh
 | `ollama-pull` | `ollama/ollama:0.30.7` | — | 初回起動時に `OLLAMA_DEFAULT_MODEL` を pull するワンショット（`restart: "no"`） |
 | `homeassistant` | `ghcr.io/home-assistant/home-assistant:2026.6.2` | 8123 | 音声パイプライン統合ハブ。mDNS のため `network_mode: host` |
 | `openwakeword` | `rhasspy/wyoming-openwakeword:2.1.0` | 10400 TCP | Wyoming Protocol でウェイクワード検出 |
-| `wyoming-whisper` | `rhasspy/wyoming-faster-whisper:3.1.0` | 10300 TCP | STT（音声→テキスト）。モデルは初回起動時に自動 DL |
+| `wyoming-whisper` | `rhasspy/wyoming-whisper:3.1.0` | 10300 TCP | STT（音声→テキスト）。モデルは初回起動時に自動 DL |
 | `wyoming-piper` | `rhasspy/wyoming-piper:2.2.2` | 10200 TCP | TTS（テキスト→音声）。音声ファイルは初回起動時に自動 DL |
 | `hermes` | `nousresearch/hermes-agent:v2026.6.5` | 8642 | 記憶・スキル付き自律エージェント。ollama の healthcheck 通過後に起動 |
 | `setup` | `setup/Dockerfile`（ローカルビルド） | — | HA 初期化・Wyoming 統合・Hermes Agent 統合・Assist パイプライン作成（ワンショット）。全依存サービス healthy 後に実行 |

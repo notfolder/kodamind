@@ -32,7 +32,7 @@ services:
     # Pi 5 は GPU アクセラレーション非対応 → CPU のみ
     # 将来 GPU 対応 Pi/外部GPU が使えるなら deploy.resources.reservations を追加
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -105,7 +105,7 @@ services:
     environment:
       - TZ=${TZ:-Asia/Tokyo}
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "10400"]
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(3); s.connect(('localhost', 10400)); s.close()\""]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -116,7 +116,7 @@ services:
   #    Wyoming プロトコルで HA と通信 → port 10300
   # ─────────────────────────────────────────────
   wyoming-whisper:
-    image: rhasspy/wyoming-faster-whisper:3.1.0
+    image: rhasspy/wyoming-whisper:3.1.0
     container_name: wyoming-whisper
     platform: linux/arm64
     restart: unless-stopped
@@ -129,11 +129,11 @@ services:
       --model ${WHISPER_MODEL:-tiny-int8}
       --language ${WHISPER_LANGUAGE:-ja}
       --beam-size 1
-      --download-dir /data
+      --data-dir /data
     environment:
       - TZ=${TZ:-Asia/Tokyo}
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "10300"]
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(3); s.connect(('localhost', 10300)); s.close()\""]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -155,11 +155,12 @@ services:
     command: >
       --uri tcp://0.0.0.0:10200
       --voice ${PIPER_VOICE:-ja_JP-takumi-medium}
-      --download-dir /data
+      --data-dir /data
+      --update-voices
     environment:
       - TZ=${TZ:-Asia/Tokyo}
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "10200"]
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(3); s.connect(('localhost', 10200)); s.close()\""]
       interval: 30s
       timeout: 5s
       retries: 3

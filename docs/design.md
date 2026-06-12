@@ -250,7 +250,7 @@ hermes_data (Docker volume)
 
 |項目|値|
 |---|---|
-|Docker イメージ|`rhasspy/wyoming-faster-whisper:3.1.0`|
+|Docker イメージ|`rhasspy/wyoming-whisper:3.1.0`|
 |コンテナ名|`wyoming-whisper`|
 |公開ポート|`10300` (TCP)|
 |通信プロトコル|Wyoming Protocol over TCP|
@@ -473,7 +473,7 @@ setup コンテナ起動（depends_on 全依存 healthy 後）
 
 |サービス         |チェック方法                       |interval|timeout|retries|start_period|
 |-------------|-----------------------------|--------|-------|-------|------------|
-|ollama       |`curl /api/tags`             |30s     |10s    |5      |30s         |
+|ollama       |`ollama list`                |30s     |10s    |5      |30s         |
 |homeassistant|`curl http://localhost:8123/`|60s     |10s    |5      |60s         |
 |openwakeword |`nc -z localhost 10400`      |30s     |5s     |3      |15s         |
 |hermes       |`curl /health`               |30s     |10s    |5      |45s         |
