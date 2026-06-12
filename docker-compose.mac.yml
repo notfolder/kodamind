@@ -1,0 +1,41 @@
+# docker-compose.mac.yml
+# Mac (Apple Silicon) 開発検証用オーバーライド
+#
+# 直接使う場合:
+#   docker compose -f docker-compose.yml -f docker-compose.mac.yml up -d
+#
+# setup.sh 経由（推奨）:
+#   bash setup.sh --mac
+
+services:
+
+  # HA: PulseAudio TCP 経由で macOS CoreAudio に接続
+  # macOS 側で事前に起動が必要:
+  #   pulseaudio --load="module-native-protocol-tcp \
+  #     auth-ip-acl=127.0.0.1;172.16.0.0/12 auth-anonymous=1" \
+  #     --exit-idle-time=-1 --daemon
+  homeassistant:
+    platform: linux/arm64
+    environment:
+      - PULSE_SERVER=tcp:host.docker.internal:4713
+
+  ollama:
+    platform: linux/arm64
+
+  ollama-pull:
+    platform: linux/arm64
+
+  openwakeword:
+    platform: linux/arm64
+
+  wyoming-whisper:
+    platform: linux/arm64
+
+  wyoming-piper:
+    platform: linux/arm64
+
+  hermes:
+    platform: linux/arm64
+
+  setup:
+    platform: linux/arm64

@@ -68,7 +68,7 @@ services:
     volumes:
       - ./config/homeassistant:/config
       - /etc/localtime:/etc/localtime:ro
-      - /run/dbus:/run/dbus:ro
+      - ${DBUS_RUN_DIR:-/run/dbus}:/run/dbus:ro
     environment:
       - TZ=${TZ:-Asia/Tokyo}
     healthcheck:

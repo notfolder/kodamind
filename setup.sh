@@ -8,7 +8,8 @@
 #   git clone https://github.com/YOUR_USER/rpi-voice-agent.git
 #   cd rpi-voice-agent
 #   cp .env.example .env        # ← 認証情報を編集
-#   bash setup.sh
+#   bash setup.sh               # Raspberry Pi 5
+#   bash setup.sh --mac         # Mac (Apple Silicon) 開発検証
 # =============================================================
 set -euo pipefail
 
@@ -23,10 +24,31 @@ warn() { echo -e "${YELLOW}[warn]${NC}  $*"; }
 err()  { echo -e "${RED}[error]${NC} $*" >&2; exit 1; }
 step() { echo -e "\n${CYAN}━━━ $* ━━━${NC}"; }
 
+# ─── オプション解析 ────────────────────────────
+MAC_MODE=false
+for arg in "$@"; do
+  case "$arg" in
+    --mac) MAC_MODE=true ;;
+    -h|--help)
+      echo "Usage: bash setup.sh [--mac]"
+      echo "  --mac   Mac (Apple Silicon) 開発検証モード（PulseAudio TCP 音声）"
+      exit 0
+      ;;
+  esac
+done
+
+COMPOSE_CMD="docker compose"
+if [[ "$MAC_MODE" == "true" ]]; then
+  COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.mac.yml"
+fi
+
 # ─── 前提チェック ─────────────────────────────
 step "Checking prerequisites"
 
-[[ "$(uname -m)" == "aarch64" ]] || err "This script is for arm64 (Raspberry Pi 5). Current arch: $(uname -m)"
+if [[ "$MAC_MODE" == "false" ]]; then
+  [[ "$(uname -m)" == "aarch64" ]] || err "This script is for arm64 (Raspberry Pi 5). Current arch: $(uname -m). Use --mac for macOS."
+fi
+
 [[ -f ".env" ]]                  || err ".env file not found. Run: cp .env.example .env  and fill in the values."
 
 source .env
@@ -39,52 +61,78 @@ source .env
 
 log "Prerequisites OK"
 
-# ─── 1. システムパッケージ更新 ─────────────────
-step "Updating system packages"
-sudo apt-get update -qq
-sudo apt-get install -y -qq \
-  curl \
-  git \
-  ca-certificates \
-  gnupg \
-  lsb-release \
-  netcat-openbsd \
-  avahi-daemon \
-  jq
-
-# ─── 2. Docker インストール（未インストールの場合） ──
-step "Installing Docker"
-if command -v docker &>/dev/null; then
-  log "Docker already installed: $(docker --version)"
+# ─── 1. システムパッケージ更新 (Pi のみ) ──────────
+if [[ "$MAC_MODE" == "false" ]]; then
+  step "Updating system packages"
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq \
+    curl \
+    git \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    netcat-openbsd \
+    avahi-daemon \
+    jq
 else
-  log "Installing Docker via official script..."
-  curl -fsSL https://get.docker.com | sudo sh
-  sudo usermod -aG docker "$USER"
-  warn "Docker group added. You may need to log out and back in."
-  warn "If docker commands fail, run: newgrp docker"
+  step "Checking macOS prerequisites"
+  command -v docker &>/dev/null \
+    || err "Docker Desktop not found. Install from https://www.docker.com/products/docker-desktop/"
+  docker compose version &>/dev/null \
+    || err "docker compose plugin not found. Update Docker Desktop."
+  log "Docker: $(docker --version)"
 fi
 
-# Docker Compose プラグイン確認
-if ! docker compose version &>/dev/null; then
-  log "Installing docker-compose-plugin..."
-  sudo apt-get install -y -qq docker-compose-plugin
+# ─── 2. Docker インストール (Pi のみ) ─────────────
+if [[ "$MAC_MODE" == "false" ]]; then
+  step "Installing Docker"
+  if command -v docker &>/dev/null; then
+    log "Docker already installed: $(docker --version)"
+  else
+    log "Installing Docker via official script..."
+    curl -fsSL https://get.docker.com | sudo sh
+    sudo usermod -aG docker "$USER"
+    warn "Docker group added. You may need to log out and back in."
+    warn "If docker commands fail, run: newgrp docker"
+  fi
+
+  # Docker Compose プラグイン確認
+  if ! docker compose version &>/dev/null; then
+    log "Installing docker-compose-plugin..."
+    sudo apt-get install -y -qq docker-compose-plugin
+  fi
+  log "Docker Compose: $(docker compose version --short)"
 fi
-log "Docker Compose: $(docker compose version --short)"
 
 # ─── 3. 音声デバイス確認 ────────────────────────
-step "Checking audio devices"
-if aplay -l 2>/dev/null | grep -q "card"; then
-  log "Audio output device found:"
-  aplay -l 2>/dev/null | grep "^card" | head -5
+step "Checking audio"
+if [[ "$MAC_MODE" == "false" ]]; then
+  if aplay -l 2>/dev/null | grep -q "card"; then
+    log "Audio output device found:"
+    aplay -l 2>/dev/null | grep "^card" | head -5
+  else
+    warn "No audio output device found. TTS playback will not work without a speaker."
+  fi
+  if arecord -l 2>/dev/null | grep -q "card"; then
+    log "Audio input (microphone) found:"
+    arecord -l 2>/dev/null | grep "^card" | head -5
+  else
+    warn "No microphone found. Wake word detection requires a USB microphone."
+  fi
 else
-  warn "No audio output device found. TTS playback will not work without a speaker."
-fi
-
-if arecord -l 2>/dev/null | grep -q "card"; then
-  log "Audio input (microphone) found:"
-  arecord -l 2>/dev/null | grep "^card" | head -5
-else
-  warn "No microphone found. Wake word detection requires a USB microphone."
+  if ! command -v pulseaudio &>/dev/null; then
+    warn "PulseAudio not found. Install: brew install pulseaudio"
+    warn "PulseAudio is required for microphone/speaker access on macOS."
+  elif ! pulseaudio --check 2>/dev/null; then
+    log "Starting PulseAudio with TCP module..."
+    pulseaudio \
+      --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1;172.16.0.0/12 auth-anonymous=1" \
+      --exit-idle-time=-1 \
+      --daemon
+    log "PulseAudio started (TCP port 4713)"
+  else
+    log "PulseAudio is already running"
+  fi
 fi
 
 # ─── 4. HA 設定ファイルを初期化 ─────────────────
@@ -143,17 +191,25 @@ else
   warn "Clone with: git clone --recurse-submodules <repo-url>"
 fi
 
+# ─── Mac: dbus 仮想ディレクトリ ──────────────────
+if [[ "$MAC_MODE" == "true" ]]; then
+  DBUS_RUN_DIR=/tmp/rpi-voice-agent-dbus
+  mkdir -p "$DBUS_RUN_DIR"
+  export DBUS_RUN_DIR
+  log "Using dummy dbus path: ${DBUS_RUN_DIR}"
+fi
+
 # ─── 8. setup コンテナイメージをビルド ───────────
 step "Building setup container image"
-docker compose build setup
+$COMPOSE_CMD build setup
 
 # ─── 9. Docker イメージを事前取得 ───────────────
 step "Pulling Docker images (this may take several minutes on Pi 5)"
-docker compose pull
+$COMPOSE_CMD pull
 
 # ─── 10. スタック起動 ───────────────────────────
 step "Starting all services"
-docker compose up -d
+$COMPOSE_CMD up -d
 
 log "Waiting for services to start..."
 sleep 15
@@ -181,9 +237,9 @@ check_service() {
   echo " OK (${elapsed}s)"
 }
 
-check_service "ollama"       "http://localhost:11434/api/tags"  120
+check_service "ollama"        "http://localhost:11434/api/tags"  120
 check_service "homeassistant" "http://localhost:8123/"           180
-check_service "hermes"       "http://localhost:8642/health"     120
+check_service "hermes"        "http://localhost:8642/health"     120
 
 # openwakeword は HTTP エンドポイントがないので nc で確認
 echo -n "  Waiting for openwakeword (TCP:10400)..."
@@ -215,25 +271,29 @@ else
 fi
 
 # ─── 13. 完了メッセージ ─────────────────────────
-PI_IP=$(hostname -I | awk '{print $1}')
+if [[ "$MAC_MODE" == "false" ]]; then
+  HOST_IP=$(hostname -I | awk '{print $1}')
+else
+  HOST_IP=$(ipconfig getifaddr en0 2>/dev/null || echo "localhost")
+fi
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║          rpi-voice-agent setup complete!             ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "  Home Assistant  → ${CYAN}http://${PI_IP}:8123${NC}"
-echo -e "  Ollama API      → ${CYAN}http://${PI_IP}:11434${NC}"
-echo -e "  Hermes Agent    → ${CYAN}http://${PI_IP}:8642${NC}"
+echo -e "  Home Assistant  → ${CYAN}http://${HOST_IP}:8123${NC}"
+echo -e "  Ollama API      → ${CYAN}http://${HOST_IP}:11434${NC}"
+echo -e "  Hermes Agent    → ${CYAN}http://${HOST_IP}:8642${NC}"
 echo -e "  Wake Word       → ${YELLOW}${WAKE_WORD:-ok_nabu}${NC} (TCP port 10400)"
 echo ""
 echo -e "  Verify: Settings → Voice Assistants → ${YELLOW}rpi-voice-agent${NC} pipeline"
-echo -e "  Fallback: ${CYAN}http://${PI_IP}:8123/config/voice-assistants/pipelines${NC}"
+echo -e "  Fallback: ${CYAN}http://${HOST_IP}:8123/config/voice-assistants/pipelines${NC}"
 echo ""
 echo -e "  Useful commands:"
-echo -e "  ${CYAN}docker compose logs -f${NC}               # tail all logs"
-echo -e "  ${CYAN}docker compose logs -f setup${NC}         # tail setup container"
-echo -e "  ${CYAN}docker compose logs -f hermes${NC}        # tail Hermes only"
-echo -e "  ${CYAN}docker compose restart hermes${NC}        # restart Hermes"
-echo -e "  ${CYAN}bash pull-model.sh qwen2.5:3b${NC}       # pull a model"
+echo -e "  ${CYAN}${COMPOSE_CMD} logs -f${NC}               # tail all logs"
+echo -e "  ${CYAN}${COMPOSE_CMD} logs -f setup${NC}         # tail setup container"
+echo -e "  ${CYAN}${COMPOSE_CMD} logs -f hermes${NC}        # tail Hermes only"
+echo -e "  ${CYAN}${COMPOSE_CMD} restart hermes${NC}        # restart Hermes"
+echo -e "  ${CYAN}bash pull-model.sh qwen2.5:3b${NC}        # pull a model"
 echo ""
