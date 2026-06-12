@@ -116,11 +116,18 @@ Piper TTS（テキスト→音声）         ← Wyoming TCP :10200
 
 **マウントするホストパス**
 
-|ホストパス                   |コンテナパス               |用途                |
-|------------------------|---------------------|------------------|
-|`./config/homeassistant`|`/config`            |設定ファイル（git 管理）    |
-|`/etc/localtime`        |`/etc/localtime` (ro)|タイムゾーン同期          |
-|`/run/dbus`             |`/run/dbus` (ro)     |Bluetooth 等のデバイス通信|
+|ホストパス                            |コンテナパス               |用途                                          |
+|----------------------------------|---------------------|----------------------------------------------|
+|`./config/homeassistant`          |`/config`            |設定ファイル（git 管理）                              |
+|`/etc/localtime`                  |`/etc/localtime` (ro)|タイムゾーン同期                                    |
+|`${DBUS_RUN_DIR:-/run/dbus}`      |`/run/dbus` (ro)     |Bluetooth 等のデバイス通信（Mac: `~/.rpi-voice-agent/dbus`）|
+
+**環境変数**
+
+|変数名|デフォルト|説明|
+|---|---|---|
+|`TZ`|`Asia/Tokyo`|タイムゾーン|
+|`PULSE_SERVER`|（未設定）|PulseAudio サーバーアドレス（Mac: `setup.sh --mac` が `tcp:host.docker.internal:4713` を `.env` に自動設定）|
 
 **初期 configuration.yaml の構成**
 
@@ -185,12 +192,13 @@ logger:
 
 |項目         |値                                          |
 |-----------|-------------------------------------------|
-|Docker イメージ|`nousresearch/hermes-agent:latest`         |
+|Docker イメージ|`nousresearch/hermes-agent:v2026.6.5`      |
 |コンテナ名      |`hermes`                                   |
 |公開ポート      |`8642` (HTTP / WebSocket)                  |
 |データ永続化     |Docker volume `hermes_data` → `/opt/data`  |
 |設定マウント     |`./config/hermes` → `/opt/data/config` (ro)|
 |依存関係       |`ollama` の healthcheck 通過後に起動              |
+|ヘルスチェック    |`GET /health` (30s interval)               |
 
 **環境変数**
 
@@ -242,7 +250,7 @@ hermes_data (Docker volume)
 
 |項目|値|
 |---|---|
-|Docker イメージ|`rhasspy/wyoming-faster-whisper:latest`|
+|Docker イメージ|`rhasspy/wyoming-faster-whisper:3.1.0`|
 |コンテナ名|`wyoming-whisper`|
 |公開ポート|`10300` (TCP)|
 |通信プロトコル|Wyoming Protocol over TCP|
@@ -273,7 +281,7 @@ hermes_data (Docker volume)
 
 |項目|値|
 |---|---|
-|Docker イメージ|`rhasspy/wyoming-piper:latest`|
+|Docker イメージ|`rhasspy/wyoming-piper:2.2.2`|
 |コンテナ名|`wyoming-piper`|
 |公開ポート|`10200` (TCP)|
 |通信プロトコル|Wyoming Protocol over TCP|
@@ -335,11 +343,12 @@ rpi-voice-agent/
 ├── setup/
 │   └── Dockerfile                  # setup コンテナのイメージ定義
 │
+├── pull-model.sh                   # Ollama モデル追加
+├── update.sh                       # イメージ更新
+│
 ├── scripts/
 │   ├── ha-setup.sh                 # HA API 自動設定（setup コンテナ内で実行）
-│   ├── ha-pipeline-setup.py        # Assist パイプライン作成（Python3 stdlib）
-│   ├── pull-model.sh               # Ollama モデル追加
-│   └── update.sh                   # イメージ更新・再起動
+│   └── ha-pipeline-setup.py        # Assist パイプライン作成（Python3 stdlib）・再起動
 │
 ├── config/
 │   ├── homeassistant/
@@ -364,23 +373,27 @@ rpi-voice-agent/
 start
   │
   ├─ 前提チェック（ホスト側）
-  │    ├─ アーキテクチャ確認（aarch64 のみ）
+  │    ├─ アーキテクチャ確認（aarch64 のみ。--mac 時はスキップ）
   │    ├─ .env ファイルの存在確認
   │    ├─ HERMES_API_KEY の設定確認
   │    └─ HA_PASSWORD の設定確認
   │
-  ├─ システムパッケージ更新（apt-get）          ← ホスト側のみ
+  ├─ [Pi]  システムパッケージ更新（apt-get）
+  ├─ [Pi]  Docker インストール（未インストールの場合のみ）
+  ├─ [Mac] Docker Desktop の存在確認
   │
-  ├─ Docker インストール（未インストールの場合のみ）  ← ホスト側のみ
-  │
-  ├─ 音声デバイス確認（aplay / arecord）
+  ├─ 音声デバイス確認
+  │    ├─ [Pi]  aplay / arecord でデバイス確認
+  │    └─ [Mac] PulseAudio 確認・未起動なら自動 daemon 起動
+  │             .env に PULSE_SERVER・DBUS_RUN_DIR を書き込み
   │
   ├─ HA 設定ファイル初期化（configuration.yaml 生成）
-  │    └─ HA 起動前に必要なためホスト側で実行
   │
   ├─ ディレクトリ作成（コンテナ起動前に必要）
   │    ├─ config/openwakeword/custom_models/
   │    └─ config/hermes/
+  │
+  ├─ git submodule 初期化（custom_components/hermes_agent）
   │
   ├─ setup イメージビルド（docker compose build setup）
   │
@@ -415,6 +428,7 @@ setup コンテナ起動（depends_on 全依存 healthy 後）
   │    ├─ openWakeWord :10400
   │    ├─ Whisper STT  :10300
   │    └─ Piper TTS    :10200
+  ├─ Hermes Agent Integration 追加（/api/config/config_entries/flow）
   └─ ha-pipeline-setup.py（Assist パイプライン自動作成）
        ├─ Wyoming エンティティ登録待ち（最大 90s）
        ├─ WebSocket 認証（/api/websocket）
@@ -450,6 +464,8 @@ setup コンテナ起動（depends_on 全依存 healthy 後）
 |`WHISPER_MODEL`|任意|`tiny-int8`|Whisper モデルサイズ|
 |`WHISPER_LANGUAGE`|任意|`ja`|Whisper 認識言語|
 |`PIPER_VOICE`|任意|`ja_JP-takumi-medium`|Piper 使用音声|
+|`PULSE_SERVER`|任意|（未設定）|PulseAudio サーバー（`setup.sh --mac` が `tcp:host.docker.internal:4713` を `.env` に自動設定）|
+|`DBUS_RUN_DIR`|任意|`/run/dbus`|dbus ソケットのホストパス（`setup.sh --mac` が `~/.rpi-voice-agent/dbus` を `.env` に自動設定）|
 
 -----
 

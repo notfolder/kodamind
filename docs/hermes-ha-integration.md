@@ -98,7 +98,7 @@ docker compose restart homeassistant
 
 ## 7. 音声パイプライン全体像
 
-```
+```text
 マイク → openWakeWord (10400)
          ↓ ウェイクワード検出
        Whisper (10300)
@@ -120,5 +120,31 @@ docker compose restart homeassistant
 ## setup コンテナを単独で再実行する場合
 
 HA が既にオンボーディング済みの場合、`ha-setup.sh` は onboarding API でエラーになります。
-Wyoming Integration の追加だけを再実行したい場合は、access token を手動取得して
-`/api/config/config_entries/flow` を直接呼び出してください。
+Wyoming Integration または Hermes Agent Integration の追加だけを再実行したい場合は、
+access token を手動取得して `/api/config/config_entries/flow` を直接呼び出してください。
+
+**Wyoming Integration の再追加**（handler: `wyoming`、host/port を指定）:
+
+```bash
+curl -X POST http://localhost:8123/api/config/config_entries/flow \
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"handler": "wyoming"}'
+# → flow_id を取得後、host と port を送信
+```
+
+**Hermes Agent Integration の再追加**（handler: `hermes_agent`）:
+
+```bash
+curl -X POST http://localhost:8123/api/config/config_entries/flow \
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"handler": "hermes_agent"}'
+# → flow_id を取得後、url と api_key を送信
+curl -X POST http://localhost:8123/api/config/config_entries/flow/<FLOW_ID> \
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "http://localhost:8642", "api_key": "<HERMES_API_KEY>"}'
+```
+
+または Settings → Integrations → Add Integration → "Hermes Agent" から手動追加してください。

@@ -36,19 +36,18 @@ bash update.sh
 
 ## アーキテクチャ
 
-`docker-compose.yml` で定義される 6 つの Docker サービス:
+`docker-compose.yml` で定義される 8 つの Docker サービス:
 
 | サービス | イメージ | ポート | 役割 |
 | --- | --- | --- | --- |
-| `ollama` | `ollama/ollama:latest` | 11434 | ローカル LLM 推論（Pi 5 は CPU のみ） |
-| `homeassistant` | `ghcr.io/home-assistant/home-assistant:stable` | 8123 | 音声パイプライン統合ハブ。mDNS のため `network_mode: host` |
-| `openwakeword` | `rhasspy/wyoming-openwakeword:latest` | 10400 TCP | Wyoming Protocol でウェイクワード検出 |
-| `wyoming-whisper` | `rhasspy/wyoming-faster-whisper:latest` | 10300 TCP | STT（音声→テキスト）。モデルは初回起動時に自動 DL |
-| `wyoming-piper` | `rhasspy/wyoming-piper:latest` | 10200 TCP | TTS（テキスト→音声）。音声ファイルは初回起動時に自動 DL |
-| `hermes` | `nousresearch/hermes-agent:latest` | 8642 | 記憶・スキル付き自律エージェント。ollama の healthcheck 通過後に起動 |
-| `setup` | `setup/Dockerfile`（ローカルビルド） | — | HA 初期化・Wyoming 統合・Assist パイプライン作成（ワンショット）。全依存サービス healthy 後に実行 |
-
-**`ollama-pull`** は `restart: "no"` のワンショットコンテナ。初回起動時に `OLLAMA_DEFAULT_MODEL` で指定したモデルを pull する。
+| `ollama` | `ollama/ollama:0.30.7` | 11434 | ローカル LLM 推論（Pi 5 は CPU のみ） |
+| `ollama-pull` | `ollama/ollama:0.30.7` | — | 初回起動時に `OLLAMA_DEFAULT_MODEL` を pull するワンショット（`restart: "no"`） |
+| `homeassistant` | `ghcr.io/home-assistant/home-assistant:2026.6.2` | 8123 | 音声パイプライン統合ハブ。mDNS のため `network_mode: host` |
+| `openwakeword` | `rhasspy/wyoming-openwakeword:2.1.0` | 10400 TCP | Wyoming Protocol でウェイクワード検出 |
+| `wyoming-whisper` | `rhasspy/wyoming-faster-whisper:3.1.0` | 10300 TCP | STT（音声→テキスト）。モデルは初回起動時に自動 DL |
+| `wyoming-piper` | `rhasspy/wyoming-piper:2.2.2` | 10200 TCP | TTS（テキスト→音声）。音声ファイルは初回起動時に自動 DL |
+| `hermes` | `nousresearch/hermes-agent:v2026.6.5` | 8642 | 記憶・スキル付き自律エージェント。ollama の healthcheck 通過後に起動 |
+| `setup` | `setup/Dockerfile`（ローカルビルド） | — | HA 初期化・Wyoming 統合・Hermes Agent 統合・Assist パイプライン作成（ワンショット）。全依存サービス healthy 後に実行 |
 
 ### コンテナ間通信
 
@@ -73,7 +72,7 @@ bash update.sh
 | --- | --- | --- | --- |
 | `HERMES_API_KEY` | **必須** | — | Hermes API 認証キー。`openssl rand -hex 32` で生成 |
 | `HA_PASSWORD` | **必須** | — | HA 管理者パスワード（setup.sh が自動作成） |
-| `HA_USERNAME` | **必須** | `admin` | HA 管理者ユーザー名 |
+| `HA_USERNAME` | 任意 | `admin` | HA 管理者ユーザー名 |
 | `HA_DISPLAY_NAME` | 任意 | `Admin` | HA 表示名 |
 | `OLLAMA_DEFAULT_MODEL` | 任意 | `qwen2.5:3b` | 初回起動時に pull するモデル |
 | `WAKE_WORD` | 任意 | `ok_nabu` | openWakeWord に渡すウェイクワード名 |
@@ -83,6 +82,8 @@ bash update.sh
 | `WHISPER_MODEL` | 任意 | `tiny-int8` | Whisper モデルサイズ（`base-int8` で精度向上） |
 | `WHISPER_LANGUAGE` | 任意 | `ja` | Whisper 認識言語 |
 | `PIPER_VOICE` | 任意 | `ja_JP-takumi-medium` | Piper 音声（[一覧](https://rhasspy.github.io/piper-samples/)） |
+| `PULSE_SERVER` | 任意 | — | PulseAudio サーバーアドレス（`setup.sh --mac` が `tcp:host.docker.internal:4713` を自動設定） |
+| `DBUS_RUN_DIR` | 任意 | `/run/dbus` | dbus ソケットのホストパス（`setup.sh --mac` が `~/.rpi-voice-agent/dbus` を自動設定） |
 
 ## Pi 5 推奨モデル
 
