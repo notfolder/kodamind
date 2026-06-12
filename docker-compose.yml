@@ -4,6 +4,8 @@
 #
 # Usage:
 #   cp .env.example .env          # fill in secrets
+#   bash setup.sh                 # Raspberry Pi 5
+#   bash setup.sh --mac           # Mac (Apple Silicon) 開発検証
 #   docker compose up -d          # start all services
 #   docker compose logs -f        # tail logs
 
@@ -17,6 +19,7 @@ services:
   ollama:
     image: ollama/ollama:0.30.7
     container_name: ollama
+    platform: linux/arm64
     restart: unless-stopped
     ports:
       - "11434:11434"
@@ -41,6 +44,7 @@ services:
   ollama-pull:
     image: ollama/ollama:0.30.7
     container_name: ollama-pull
+    platform: linux/arm64
     restart: "no"
     depends_on:
       ollama:
@@ -62,6 +66,7 @@ services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:2026.6.2
     container_name: homeassistant
+    platform: linux/arm64
     restart: unless-stopped
     network_mode: host          # mDNS / デバイス検出に必要
     privileged: true
@@ -71,6 +76,7 @@ services:
       - ${DBUS_RUN_DIR:-/run/dbus}:/run/dbus:ro
     environment:
       - TZ=${TZ:-Asia/Tokyo}
+      - PULSE_SERVER=${PULSE_SERVER:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8123/"]
       interval: 60s
@@ -85,6 +91,7 @@ services:
   openwakeword:
     image: rhasspy/wyoming-openwakeword:2.1.0
     container_name: openwakeword
+    platform: linux/arm64
     restart: unless-stopped
     ports:
       - "10400:10400"
@@ -111,6 +118,7 @@ services:
   wyoming-whisper:
     image: rhasspy/wyoming-faster-whisper:3.1.0
     container_name: wyoming-whisper
+    platform: linux/arm64
     restart: unless-stopped
     ports:
       - "10300:10300"
@@ -138,6 +146,7 @@ services:
   wyoming-piper:
     image: rhasspy/wyoming-piper:2.2.2
     container_name: wyoming-piper
+    platform: linux/arm64
     restart: unless-stopped
     ports:
       - "10200:10200"
@@ -163,6 +172,7 @@ services:
   hermes:
     image: nousresearch/hermes-agent:v2026.6.5
     container_name: hermes
+    platform: linux/arm64
     restart: unless-stopped
     depends_on:
       ollama:
@@ -202,6 +212,7 @@ services:
       context: .
       dockerfile: setup/Dockerfile
     container_name: setup
+    platform: linux/arm64
     restart: "no"
     network_mode: host          # localhost:8123 に到達するために必須
     depends_on:

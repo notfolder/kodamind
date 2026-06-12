@@ -24,6 +24,17 @@ warn() { echo -e "${YELLOW}[warn]${NC}  $*"; }
 err()  { echo -e "${RED}[error]${NC} $*" >&2; exit 1; }
 step() { echo -e "\n${CYAN}━━━ $* ━━━${NC}"; }
 
+# .env の変数を追記または上書きする（BSD sed / GNU sed 両対応）
+set_env_var() {
+  local key="$1" val="$2"
+  if grep -q "^${key}=" .env 2>/dev/null; then
+    sed -i.bak "s|^${key}=.*|${key}=${val}|" .env
+    rm -f .env.bak
+  else
+    echo "${key}=${val}" >> .env
+  fi
+}
+
 # ─── オプション解析 ────────────────────────────
 MAC_MODE=false
 for arg in "$@"; do
@@ -36,11 +47,6 @@ for arg in "$@"; do
       ;;
   esac
 done
-
-COMPOSE_CMD="docker compose"
-if [[ "$MAC_MODE" == "true" ]]; then
-  COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.mac.yml"
-fi
 
 # ─── 前提チェック ─────────────────────────────
 step "Checking prerequisites"
@@ -96,7 +102,6 @@ if [[ "$MAC_MODE" == "false" ]]; then
     warn "If docker commands fail, run: newgrp docker"
   fi
 
-  # Docker Compose プラグイン確認
   if ! docker compose version &>/dev/null; then
     log "Installing docker-compose-plugin..."
     sudo apt-get install -y -qq docker-compose-plugin
@@ -133,6 +138,13 @@ else
   else
     log "PulseAudio is already running"
   fi
+
+  # Mac 固有設定を .env に書き込む（docker compose が自動で読む）
+  DBUS_DIR="${HOME}/.rpi-voice-agent/dbus"
+  mkdir -p "${DBUS_DIR}"
+  set_env_var "DBUS_RUN_DIR" "${DBUS_DIR}"
+  set_env_var "PULSE_SERVER" "tcp:host.docker.internal:4713"
+  log "Mac settings written to .env (PULSE_SERVER, DBUS_RUN_DIR)"
 fi
 
 # ─── 4. HA 設定ファイルを初期化 ─────────────────
@@ -191,25 +203,17 @@ else
   warn "Clone with: git clone --recurse-submodules <repo-url>"
 fi
 
-# ─── Mac: dbus 仮想ディレクトリ ──────────────────
-if [[ "$MAC_MODE" == "true" ]]; then
-  DBUS_RUN_DIR=/tmp/rpi-voice-agent-dbus
-  mkdir -p "$DBUS_RUN_DIR"
-  export DBUS_RUN_DIR
-  log "Using dummy dbus path: ${DBUS_RUN_DIR}"
-fi
-
 # ─── 8. setup コンテナイメージをビルド ───────────
 step "Building setup container image"
-$COMPOSE_CMD build setup
+docker compose build setup
 
 # ─── 9. Docker イメージを事前取得 ───────────────
 step "Pulling Docker images (this may take several minutes on Pi 5)"
-$COMPOSE_CMD pull
+docker compose pull
 
 # ─── 10. スタック起動 ───────────────────────────
 step "Starting all services"
-$COMPOSE_CMD up -d
+docker compose up -d
 
 log "Waiting for services to start..."
 sleep 15
@@ -291,9 +295,9 @@ echo -e "  Verify: Settings → Voice Assistants → ${YELLOW}rpi-voice-agent${N
 echo -e "  Fallback: ${CYAN}http://${HOST_IP}:8123/config/voice-assistants/pipelines${NC}"
 echo ""
 echo -e "  Useful commands:"
-echo -e "  ${CYAN}${COMPOSE_CMD} logs -f${NC}               # tail all logs"
-echo -e "  ${CYAN}${COMPOSE_CMD} logs -f setup${NC}         # tail setup container"
-echo -e "  ${CYAN}${COMPOSE_CMD} logs -f hermes${NC}        # tail Hermes only"
-echo -e "  ${CYAN}${COMPOSE_CMD} restart hermes${NC}        # restart Hermes"
+echo -e "  ${CYAN}docker compose logs -f${NC}               # tail all logs"
+echo -e "  ${CYAN}docker compose logs -f setup${NC}         # tail setup container"
+echo -e "  ${CYAN}docker compose logs -f hermes${NC}        # tail Hermes only"
+echo -e "  ${CYAN}docker compose restart hermes${NC}        # restart Hermes"
 echo -e "  ${CYAN}bash pull-model.sh qwen2.5:3b${NC}        # pull a model"
 echo ""

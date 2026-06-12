@@ -20,15 +20,12 @@ cp .env.example .env          # HERMES_API_KEY を必ず設定
 bash setup.sh                 # Raspberry Pi 5 (arm64)
 bash setup.sh --mac           # Mac (Apple Silicon) 開発検証
 
-# 日常操作（Pi）
+# 日常操作（Pi / Mac 共通）
 docker compose up -d          # 全サービス起動
 docker compose down           # 全サービス停止
 docker compose logs -f        # 全ログをストリーミング
 docker compose logs -f hermes # 特定サービスのログ
 docker compose restart hermes # 特定サービスの再起動
-
-# 日常操作（Mac）
-docker compose -f docker-compose.yml -f docker-compose.mac.yml up -d
 
 # Ollama モデルの追加
 bash pull-model.sh qwen2.5:3b
