@@ -272,9 +272,9 @@ def main():
     print(f"  TTS       : {tts_entity or 'not found'}")
     print(f"  Wake word : {ww_entity or 'not found'}")
 
-    # Ollama 会話エンティティを発見
+    # Ollama 会話エンティティを発見（subentry 作成後の初期化に時間がかかるため 120s）
     sock.close()
-    conv_engine = wait_for_ollama_entity()
+    conv_engine = wait_for_ollama_entity(timeout=120)
     sock = ws_connect(host, port)
     ws_recv(sock)  # auth_required
     ws_send(sock, {"type": "auth", "access_token": ACCESS_TOKEN})

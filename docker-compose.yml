@@ -55,8 +55,14 @@ services:
       - OLLAMA_HOST=http://ollama:11434
     entrypoint: >
       sh -c "
-        echo '=== Pulling default model: ${OLLAMA_DEFAULT_MODEL:-qwen2.5:3b} ===' &&
-        ollama pull ${OLLAMA_DEFAULT_MODEL:-qwen2.5:3b} &&
+        MODEL=${OLLAMA_DEFAULT_MODEL:-qwen2.5:3b} &&
+        echo '=== Checking model: '\"$$MODEL\"' ===' &&
+        if ollama list | grep -q \"$$MODEL\"; then
+          echo '=== Model already exists, skipping pull ===';
+        else
+          echo '=== Pulling model: '\"$$MODEL\"' ===' &&
+          ollama pull \"$$MODEL\";
+        fi &&
         echo '=== Done ==='
       "
 

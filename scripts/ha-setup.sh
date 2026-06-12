@@ -183,6 +183,7 @@ OLLAMA_API_URL="http://localhost:11434"
 OLLAMA_MODEL="${OLLAMA_DEFAULT_MODEL:-qwen2.5:3b}"
 log "Adding Ollama Conversation Agent (model: ${OLLAMA_MODEL})..."
 
+# Step 1: config flow 開始（URL 設定）
 ollama_flow=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/flow" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
@@ -193,31 +194,55 @@ ollama_flow_id=$(echo "${ollama_flow:-}" | jq -r '.flow_id // empty' 2>/dev/null
 if [[ -z "$ollama_flow_id" ]]; then
   warn "  Ollama config flow failed. Configure manually: Settings → Integrations → Add → Ollama"
 else
-  # Step 2: URL 送信
-  ollama_s2=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/flow/${ollama_flow_id}" \
+  # Step 2: URL 送信 → create_entry が返る（HA 2025+ は URL のみで entry 作成）
+  ollama_entry_resp=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/flow/${ollama_flow_id}" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" \
-    -d "{\"url\": \"${OLLAMA_API_URL}\"}") || ollama_s2=""
+    -d "{\"url\": \"${OLLAMA_API_URL}\"}") || ollama_entry_resp=""
 
-  ollama_s2_type=$(echo "${ollama_s2:-}" | jq -r '.type // "unknown"' 2>/dev/null || echo "unknown")
+  ollama_entry_type=$(echo "${ollama_entry_resp:-}" | jq -r '.type // "unknown"' 2>/dev/null || echo "unknown")
+  ollama_entry_id=$(echo "${ollama_entry_resp:-}" | jq -r '.entry_id // empty' 2>/dev/null || true)
 
-  if [[ "$ollama_s2_type" == "form" ]]; then
-    # Step 3: モデル選択
-    ollama_s3=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/flow/${ollama_flow_id}" \
+  # form が返った場合はモデル選択ステップあり（旧 HA 形式）
+  if [[ "$ollama_entry_type" == "form" ]]; then
+    ollama_entry_resp=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/flow/${ollama_flow_id}" \
       -H "Authorization: Bearer ${ACCESS_TOKEN}" \
       -H "Content-Type: application/json" \
-      -d "{\"model\": \"${OLLAMA_MODEL}\"}") || ollama_s3=""
+      -d "{\"model\": \"${OLLAMA_MODEL}\"}") || ollama_entry_resp=""
+    ollama_entry_type=$(echo "${ollama_entry_resp:-}" | jq -r '.type // "unknown"' 2>/dev/null || echo "unknown")
+    ollama_entry_id=$(echo "${ollama_entry_resp:-}" | jq -r '.entry_id // empty' 2>/dev/null || true)
+  fi
 
-    ollama_s3_type=$(echo "${ollama_s3:-}" | jq -r '.type // "unknown"' 2>/dev/null || echo "unknown")
-    if [[ "$ollama_s3_type" == "create_entry" ]]; then
-      log "  Ollama integration added (model: ${OLLAMA_MODEL})"
-    else
-      warn "  Ollama step 3 result: '${ollama_s3_type}'. Configure manually: Settings → Integrations → Add → Ollama"
+  if [[ "$ollama_entry_type" == "create_entry" ]]; then
+    log "  Ollama integration added (entry: ${ollama_entry_id})"
+
+    # HA 2025+: subentry（AI エージェント）を追加してモデルを設定
+    if [[ -n "$ollama_entry_id" ]]; then
+      sub_flow=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/subentry/flow" \
+        -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "{\"handler\": [\"${ollama_entry_id}\", \"create_subentry\"]}") || sub_flow=""
+
+      sub_flow_id=$(echo "${sub_flow:-}" | jq -r '.flow_id // empty' 2>/dev/null || true)
+
+      if [[ -n "$sub_flow_id" ]]; then
+        sub_result=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/subentry/flow/${sub_flow_id}" \
+          -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+          -H "Content-Type: application/json" \
+          -d "{\"model\": \"${OLLAMA_MODEL}\"}") || sub_result=""
+
+        sub_type=$(echo "${sub_result:-}" | jq -r '.type // "unknown"' 2>/dev/null || echo "unknown")
+        if [[ "$sub_type" == "create_entry" ]]; then
+          log "  Ollama AI agent configured (model: ${OLLAMA_MODEL})"
+        else
+          warn "  Ollama subentry result: '${sub_type}'. Add agent manually: Settings → Integrations → Ollama → Add entry"
+        fi
+      else
+        warn "  Ollama subentry flow not available. Add agent manually: Settings → Integrations → Ollama → Add entry"
+      fi
     fi
-  elif [[ "$ollama_s2_type" == "create_entry" ]]; then
-    log "  Ollama integration added (model: ${OLLAMA_MODEL})"
   else
-    warn "  Ollama step 2 result: '${ollama_s2_type}'. Configure manually: Settings → Integrations → Add → Ollama"
+    warn "  Ollama entry result: '${ollama_entry_type}'. Configure manually: Settings → Integrations → Add → Ollama"
   fi
 fi
 
