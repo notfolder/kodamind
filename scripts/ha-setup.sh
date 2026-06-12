@@ -178,12 +178,56 @@ else
   warn "  Ensure git submodule is initialized: git submodule update --init"
 fi
 
-# ─── 8. Assist パイプライン自動作成 ─────────────────────
+# ─── 8. Ollama Conversation Agent 追加 ───────────────
+OLLAMA_API_URL="http://localhost:11434"
+OLLAMA_MODEL="${OLLAMA_DEFAULT_MODEL:-qwen2.5:3b}"
+log "Adding Ollama Conversation Agent (model: ${OLLAMA_MODEL})..."
+
+ollama_flow=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/flow" \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"handler": "ollama"}') || ollama_flow=""
+
+ollama_flow_id=$(echo "${ollama_flow:-}" | jq -r '.flow_id // empty' 2>/dev/null || true)
+
+if [[ -z "$ollama_flow_id" ]]; then
+  warn "  Ollama config flow failed. Configure manually: Settings → Integrations → Add → Ollama"
+else
+  # Step 2: URL 送信
+  ollama_s2=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/flow/${ollama_flow_id}" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d "{\"url\": \"${OLLAMA_API_URL}\"}") || ollama_s2=""
+
+  ollama_s2_type=$(echo "${ollama_s2:-}" | jq -r '.type // "unknown"' 2>/dev/null || echo "unknown")
+
+  if [[ "$ollama_s2_type" == "form" ]]; then
+    # Step 3: モデル選択
+    ollama_s3=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/flow/${ollama_flow_id}" \
+      -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d "{\"model\": \"${OLLAMA_MODEL}\"}") || ollama_s3=""
+
+    ollama_s3_type=$(echo "${ollama_s3:-}" | jq -r '.type // "unknown"' 2>/dev/null || echo "unknown")
+    if [[ "$ollama_s3_type" == "create_entry" ]]; then
+      log "  Ollama integration added (model: ${OLLAMA_MODEL})"
+    else
+      warn "  Ollama step 3 result: '${ollama_s3_type}'. Configure manually: Settings → Integrations → Add → Ollama"
+    fi
+  elif [[ "$ollama_s2_type" == "create_entry" ]]; then
+    log "  Ollama integration added (model: ${OLLAMA_MODEL})"
+  else
+    warn "  Ollama step 2 result: '${ollama_s2_type}'. Configure manually: Settings → Integrations → Add → Ollama"
+  fi
+fi
+
+# ─── 9. Assist パイプライン自動作成 ─────────────────────
 log "Creating Assist pipeline via WebSocket API..."
 HA_URL="${HA_URL}" \
 WAKE_WORD="${WAKE_WORD:-ok_nabu}" \
 WHISPER_LANGUAGE="${WHISPER_LANGUAGE:-ja}" \
 TTS_VOICE="${TTS_VOICE:-ja_JP-voicevox}" \
+OLLAMA_DEFAULT_MODEL="${OLLAMA_MODEL}" \
   python3 "$(dirname "$0")/ha-pipeline-setup.py" "${ACCESS_TOKEN}" \
   && log "Assist pipeline created and set as preferred" \
   || warn "Assist pipeline auto-setup failed. Configure manually at ${HA_URL}/config/voice-assistants/pipelines"
@@ -196,7 +240,8 @@ echo -e "${GREEN}└────────────────────
 echo ""
 echo -e "  Open ${CYAN}http://localhost:8123${NC} to verify:"
 echo -e "    Settings → Voice Assistants → ${YELLOW}rpi-voice-agent${NC} pipeline"
-echo -e "    Wake Word : ${YELLOW}${WAKE_WORD:-ok_nabu}${NC} / STT : Faster Whisper / TTS : VOICEVOX"
+echo -e "    Wake Word : ${YELLOW}${WAKE_WORD:-ok_nabu}${NC} / STT : Faster Whisper"
+echo -e "    TTS : VOICEVOX / Conversation : Ollama (${OLLAMA_MODEL})"
 echo -e ""
 echo -e "  If pipeline auto-setup failed, configure manually:"
 echo -e "  ${CYAN}http://localhost:8123/config/voice-assistants/pipelines${NC}"

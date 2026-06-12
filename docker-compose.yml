@@ -262,6 +262,7 @@ services:
       - WAKE_WORD=${WAKE_WORD:-ok_nabu}
       - WHISPER_LANGUAGE=${WHISPER_LANGUAGE:-ja}
       - TTS_VOICE=${TTS_VOICE:-ja_JP-voicevox}
+      - OLLAMA_DEFAULT_MODEL=${OLLAMA_DEFAULT_MODEL:-qwen2.5:3b}
       - TZ=${TZ:-Asia/Tokyo}
     entrypoint: ["bash", "/scripts/ha-setup.sh"]
 

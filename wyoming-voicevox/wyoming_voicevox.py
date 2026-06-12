@@ -134,7 +134,7 @@ async def main(args: argparse.Namespace) -> None:
                             url="https://voicevox.hiroshiba.jp/",
                         ),
                         installed=True,
-                        languages=["ja-JP"],
+                        languages=["ja", "ja-JP"],
                         version=None,
                     )
                 ],
