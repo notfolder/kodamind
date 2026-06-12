@@ -7,7 +7,7 @@
 #   1. HA 管理者ユーザー作成 (/api/onboarding/users)
 #   2. アクセストークン取得 (/auth/token)
 #   3. オンボーディング完了マーク
-#   4. Wyoming Integration 追加 × 3 (openWakeWord / Whisper / Piper)
+#   4. Wyoming Integration 追加 × 3 (openWakeWord / Whisper / VOICEVOX)
 #   5. Assist パイプライン作成 (ha-pipeline-setup.py)
 
 set -euo pipefail
@@ -34,7 +34,7 @@ HA_DISPLAY_NAME="${HA_DISPLAY_NAME:-Admin}"
 log "Waiting for Home Assistant to be ready..."
 max_wait=300
 elapsed=0
-until curl -sf "${HA_URL}/api/" > /dev/null 2>&1; do
+until curl -sf "${HA_URL}/" > /dev/null 2>&1; do
   sleep 5; elapsed=$((elapsed + 5)); printf "."
   [[ $elapsed -ge $max_wait ]] && echo "" && err "Home Assistant did not become ready within ${max_wait}s"
 done
@@ -110,7 +110,7 @@ wyoming_10300_ready=false
 wyoming_10200_ready=false
 wait_tcp 10400 "openWakeWord" && wyoming_10400_ready=true
 wait_tcp 10300 "Whisper STT"  && wyoming_10300_ready=true
-wait_tcp 10200 "Piper TTS"    && wyoming_10200_ready=true
+wait_tcp 10200 "VOICEVOX TTS" && wyoming_10200_ready=true
 
 # ─── 6. Wyoming Integration 追加 ─────────────────────
 add_wyoming_integration() {
@@ -147,7 +147,7 @@ add_wyoming_integration() {
 
 [[ "$wyoming_10400_ready" == "true" ]] && add_wyoming_integration "openWakeWord" 10400
 [[ "$wyoming_10300_ready" == "true" ]] && add_wyoming_integration "Whisper STT"  10300
-[[ "$wyoming_10200_ready" == "true" ]] && add_wyoming_integration "Piper TTS"    10200
+[[ "$wyoming_10200_ready" == "true" ]] && add_wyoming_integration "VOICEVOX TTS" 10200
 
 # ─── 7. Hermes Agent Integration 追加 ────────────
 HERMES_URL="${HERMES_URL:-http://localhost:8642}"
@@ -183,7 +183,7 @@ log "Creating Assist pipeline via WebSocket API..."
 HA_URL="${HA_URL}" \
 WAKE_WORD="${WAKE_WORD:-ok_nabu}" \
 WHISPER_LANGUAGE="${WHISPER_LANGUAGE:-ja}" \
-PIPER_VOICE="${PIPER_VOICE:-ja_JP-takumi-medium}" \
+TTS_VOICE="${TTS_VOICE:-ja_JP-voicevox}" \
   python3 "$(dirname "$0")/ha-pipeline-setup.py" "${ACCESS_TOKEN}" \
   && log "Assist pipeline created and set as preferred" \
   || warn "Assist pipeline auto-setup failed. Configure manually at ${HA_URL}/config/voice-assistants/pipelines"
@@ -196,7 +196,7 @@ echo -e "${GREEN}└────────────────────
 echo ""
 echo -e "  Open ${CYAN}http://localhost:8123${NC} to verify:"
 echo -e "    Settings → Voice Assistants → ${YELLOW}rpi-voice-agent${NC} pipeline"
-echo -e "    Wake Word : ${YELLOW}${WAKE_WORD:-ok_nabu}${NC} / STT : Faster Whisper / TTS : Piper"
+echo -e "    Wake Word : ${YELLOW}${WAKE_WORD:-ok_nabu}${NC} / STT : Faster Whisper / TTS : VOICEVOX"
 echo -e ""
 echo -e "  If pipeline auto-setup failed, configure manually:"
 echo -e "  ${CYAN}http://localhost:8123/config/voice-assistants/pipelines${NC}"

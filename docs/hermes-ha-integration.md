@@ -5,7 +5,7 @@
 `setup.sh` を実行すると `setup` コンテナ（`scripts/ha-setup.sh`）が自動的に以下を処理します。
 
 - `/api/onboarding/users` で管理者ユーザー作成（`.env` の `HA_USERNAME` / `HA_PASSWORD` を使用）
-- Wyoming Integration (openWakeWord / Whisper STT / Piper TTS) を `/api/config/config_entries/flow` で追加
+- Wyoming Integration (openWakeWord / Whisper STT / VOICEVOX TTS) を `/api/config/config_entries/flow` で追加
 
 手動操作は不要です。
 
@@ -17,7 +17,7 @@
 | --- | --- |
 | openWakeWord | 10400 |
 | Whisper STT | 10300 |
-| Piper TTS | 10200 |
+| VOICEVOX TTS | 10200 |
 
 ## 3. Assist パイプラインの設定（自動）
 
@@ -33,8 +33,8 @@
 | --- | --- |
 | Wake Word | `WAKE_WORD`（デフォルト: `ok_nabu`） |
 | STT | 自動発見した Wyoming Whisper エンティティ |
-| TTS | 自動発見した Wyoming Piper エンティティ |
-| TTS Voice | `PIPER_VOICE`（デフォルト: `ja_JP-takumi-medium`） |
+| TTS | 自動発見した Wyoming VOICEVOX エンティティ |
+| TTS Voice | `TTS_VOICE`（デフォルト: `ja_JP-voicevox`） |
 | 言語 | `WHISPER_LANGUAGE`（デフォルト: `ja`） |
 
 **確認方法**: `setup.sh` 完了後、`http://<Pi IP>:8123` → Settings → Voice Assistants で `rpi-voice-agent` パイプラインが表示されていれば成功です。
@@ -52,15 +52,17 @@
 | `WHISPER_MODEL` | `tiny-int8` | モデルサイズ（`tiny-int8` / `base-int8` / `small-int8`） |
 | `WHISPER_LANGUAGE` | `ja` | 認識言語 |
 
-## 5. Piper（TTS）の設定
+## 5. VOICEVOX（TTS）の設定
 
-`wyoming-piper` サービスは `docker-compose.yml` に組み込み済みです。`docker compose up -d` で自動起動します。
+`voicevox-engine` と `wyoming-voicevox` サービスは `docker-compose.yml` に組み込み済みです。`docker compose up -d` で自動起動します。
 
 デフォルト設定（`.env` で変更可能）:
 
 | 変数名 | デフォルト | 説明 |
 | --- | --- | --- |
-| `PIPER_VOICE` | `ja_JP-takumi-medium` | 使用する音声（[Piper 対応音声一覧](https://rhasspy.github.io/piper-samples/)） |
+| `VOICEVOX_SPEAKER` | `3` | 話者 ID（3=四国めたん, 2=ずんだもん, 8=春日部つむぎ, 13=青山龍星） |
+
+話者一覧は [voicevox.hiroshiba.jp](https://voicevox.hiroshiba.jp/) で確認できます。起動後は `http://localhost:50021/speakers` でも全話者 ID を参照できます。
 
 ## 6. Hermes Agent を HA の Conversation Agent として接続（自動）
 
@@ -105,7 +107,7 @@ docker compose restart homeassistant
          ↓ 音声 → テキスト
        Hermes Agent (8642) ← Ollama (11434)
          ↓ 応答テキスト生成
-       Piper (10200)
+       wyoming-voicevox (10200) → voicevox-engine (50021)
          ↓ テキスト → 音声
        スピーカー
 ```

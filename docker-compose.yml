@@ -1,5 +1,5 @@
 # rpi-voice-agent / docker-compose.yml
-# Stack: Ollama + Home Assistant + wyoming-openwakeword + wyoming-faster-whisper + wyoming-piper + Hermes Agent
+# Stack: Ollama + Home Assistant + wyoming-openwakeword + wyoming-faster-whisper + VOICEVOX + Hermes Agent
 # Tested on Raspberry Pi 5 (arm64) running Raspberry Pi OS Bookworm 64-bit
 #
 # Usage:
@@ -140,23 +140,43 @@ services:
       start_period: 60s
 
   # ─────────────────────────────────────────────
-  # 6. wyoming-piper（テキスト → 音声 TTS）
-  #    Wyoming プロトコルで HA と通信 → port 10200
+  # 6. voicevox-engine（VOICEVOX HTTP API）
+  #    日本語 TTS エンジン → port 50021 (内部)
   # ─────────────────────────────────────────────
-  wyoming-piper:
-    image: rhasspy/wyoming-piper:2.2.2
-    container_name: wyoming-piper
+  voicevox-engine:
+    image: voicevox/voicevox_engine:cpu-0.26.0-dev
+    container_name: voicevox-engine
     platform: linux/arm64
     restart: unless-stopped
+    environment:
+      - TZ=${TZ:-Asia/Tokyo}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/50021' 2>/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # ─────────────────────────────────────────────
+  # 7. wyoming-voicevox（VOICEVOX → Wyoming アダプター）
+  #    Wyoming プロトコルで HA と通信 → port 10200
+  # ─────────────────────────────────────────────
+  wyoming-voicevox:
+    build:
+      context: .
+      dockerfile: wyoming-voicevox/Dockerfile
+    container_name: wyoming-voicevox
+    platform: linux/arm64
+    restart: unless-stopped
+    depends_on:
+      voicevox-engine:
+        condition: service_healthy
     ports:
       - "10200:10200"
-    volumes:
-      - piper_data:/data
     command: >
       --uri tcp://0.0.0.0:10200
-      --voice ${PIPER_VOICE:-ja_JP-takumi-medium}
-      --data-dir /data
-      --update-voices
+      --voicevox-url http://voicevox-engine:50021
+      --speaker ${VOICEVOX_SPEAKER:-3}
     environment:
       - TZ=${TZ:-Asia/Tokyo}
     healthcheck:
@@ -164,7 +184,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 60s
+      start_period: 30s
 
   # ─────────────────────────────────────────────
   # 7. Hermes Agent（自律エージェント）
@@ -190,13 +210,15 @@ services:
       - HERMES_LLM_BASE_URL=http://ollama:11434
       - HERMES_LLM_MODEL=${OLLAMA_DEFAULT_MODEL:-qwen2.5:3b}
       # API サーバー公開設定
+      - API_SERVER_ENABLED=1
       - API_SERVER_HOST=0.0.0.0
       - API_SERVER_PORT=8642
       - API_SERVER_KEY=${HERMES_API_KEY}
       # タイムゾーン
       - HERMES_TIMEZONE=${TZ:-Asia/Tokyo}
+    command: ["gateway", "run"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8642/health"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8642' 2>/dev/null"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -223,7 +245,7 @@ services:
         condition: service_healthy
       wyoming-whisper:
         condition: service_healthy
-      wyoming-piper:
+      wyoming-voicevox:
         condition: service_healthy
       ollama-pull:
         condition: service_completed_successfully
@@ -239,7 +261,7 @@ services:
       - HERMES_URL=http://localhost:8642
       - WAKE_WORD=${WAKE_WORD:-ok_nabu}
       - WHISPER_LANGUAGE=${WHISPER_LANGUAGE:-ja}
-      - PIPER_VOICE=${PIPER_VOICE:-ja_JP-takumi-medium}
+      - TTS_VOICE=${TTS_VOICE:-ja_JP-voicevox}
       - TZ=${TZ:-Asia/Tokyo}
     entrypoint: ["bash", "/scripts/ha-setup.sh"]
 
@@ -250,8 +272,6 @@ volumes:
   ollama_data:
     driver: local
   whisper_data:
-    driver: local
-  piper_data:
     driver: local
   hermes_data:
     driver: local

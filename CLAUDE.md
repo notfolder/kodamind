@@ -45,7 +45,8 @@ bash update.sh
 | `homeassistant` | `ghcr.io/home-assistant/home-assistant:2026.6.2` | 8123 | 音声パイプライン統合ハブ。mDNS のため `network_mode: host` |
 | `openwakeword` | `rhasspy/wyoming-openwakeword:2.1.0` | 10400 TCP | Wyoming Protocol でウェイクワード検出 |
 | `wyoming-whisper` | `rhasspy/wyoming-whisper:3.1.0` | 10300 TCP | STT（音声→テキスト）。モデルは初回起動時に自動 DL |
-| `wyoming-piper` | `rhasspy/wyoming-piper:2.2.2` | 10200 TCP | TTS（テキスト→音声）。音声ファイルは初回起動時に自動 DL |
+| `voicevox-engine` | `voicevox/voicevox_engine:cpu-0.26.0-dev` | 50021（内部） | VOICEVOX 日本語 TTS HTTP API |
+| `wyoming-voicevox` | `wyoming-voicevox/Dockerfile`（ローカルビルド） | 10200 TCP | VOICEVOX → Wyoming アダプター。voicevox-engine healthy 後に起動 |
 | `hermes` | `nousresearch/hermes-agent:v2026.6.5` | 8642 | 記憶・スキル付き自律エージェント。ollama の healthcheck 通過後に起動 |
 | `setup` | `setup/Dockerfile`（ローカルビルド） | — | HA 初期化・Wyoming 統合・Hermes Agent 統合・Assist パイプライン作成（ワンショット）。全依存サービス healthy 後に実行 |
 
@@ -60,7 +61,6 @@ bash update.sh
 | --- | --- | --- |
 | Ollama モデルファイル | Docker volume `ollama_data` | volume で永続化 |
 | Whisper モデルファイル | Docker volume `whisper_data` | volume で永続化 |
-| Piper 音声ファイル | Docker volume `piper_data` | volume で永続化 |
 | Hermes 記憶・スキル・セッション | Docker volume `hermes_data` | volume で永続化 |
 | HA 設定ファイル | `./config/homeassistant/` | Git 管理 |
 | カスタムウェイクワードモデル | `./config/openwakeword/custom_models/` | Git 管理 |
@@ -81,7 +81,7 @@ bash update.sh
 | `OLLAMA_NUM_PARALLEL` | 任意 | `1` | 並列推論数（Pi 5 では 1 推奨） |
 | `WHISPER_MODEL` | 任意 | `tiny-int8` | Whisper モデルサイズ（`base-int8` で精度向上） |
 | `WHISPER_LANGUAGE` | 任意 | `ja` | Whisper 認識言語 |
-| `PIPER_VOICE` | 任意 | `ja_JP-takumi-medium` | Piper 音声（[一覧](https://rhasspy.github.io/piper-samples/)） |
+| `VOICEVOX_SPEAKER` | 任意 | `3` | VOICEVOX 話者 ID（3=四国めたん, 2=ずんだもん, 8=春日部つむぎ） |
 | `PULSE_SERVER` | 任意 | — | PulseAudio サーバーアドレス（`setup.sh --mac` が `tcp:host.docker.internal:4713` を自動設定） |
 | `DBUS_RUN_DIR` | 任意 | `/run/dbus` | dbus ソケットのホストパス（`setup.sh --mac` が `~/.rpi-voice-agent/dbus` を自動設定） |
 

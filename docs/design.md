@@ -277,26 +277,50 @@ hermes_data (Docker volume)
 
 -----
 
-### 2.7 wyoming-piper（TTS）
+### 2.7 voicevox-engine + wyoming-voicevox（TTS）
+
+#### voicevox-engine
 
 |項目|値|
 |---|---|
-|Docker イメージ|`rhasspy/wyoming-piper:2.2.2`|
-|コンテナ名|`wyoming-piper`|
+|Docker イメージ|`voicevox/voicevox_engine:cpu-0.26.0-dev`|
+|コンテナ名|`voicevox-engine`|
+|公開ポート|`50021`（Docker 内部ネットワークのみ）|
+|通信プロトコル|HTTP REST API|
+|ヘルスチェック|`GET /version` (30s interval)|
+|再起動ポリシー|`unless-stopped`|
+
+VOICEVOX は日本語に特化した高品質 TTS。CPU 版は arm64（Pi 5）対応。
+
+##### VOICEVOX 代表的な話者 ID
+
+|ID|キャラクター|スタイル|
+|---|---|---|
+|`3`|四国めたん|ノーマル（デフォルト）|
+|`2`|ずんだもん|あまあま|
+|`8`|春日部つむぎ|ノーマル|
+|`13`|青山龍星|ノーマル|
+
+#### wyoming-voicevox（Wyoming アダプター）
+
+|項目|値|
+|---|---|
+|Docker イメージ|`wyoming-voicevox/Dockerfile`（ローカルビルド）|
+|コンテナ名|`wyoming-voicevox`|
 |公開ポート|`10200` (TCP)|
 |通信プロトコル|Wyoming Protocol over TCP|
-|データ永続化|Docker volume `piper_data` → `/data`|
-|ヘルスチェック|`nc -z localhost 10200` (30s interval)|
+|依存関係|`voicevox-engine` の healthcheck 通過後に起動|
+|ヘルスチェック|Python3 TCP socket check (30s interval)|
 
-#### Piper 起動引数
+##### wyoming-voicevox 起動引数
 
-```
+```text
 --uri tcp://0.0.0.0:10200
---voice ${PIPER_VOICE:-ja_JP-takumi-medium}
---download-dir /data
+--voicevox-url http://voicevox-engine:50021
+--speaker ${VOICEVOX_SPEAKER:-3}
 ```
 
-音声ファイルは初回起動時に `/data` へ自動ダウンロードされる。利用可能な音声の一覧は [rhasspy.github.io/piper-samples](https://rhasspy.github.io/piper-samples/) を参照。
+VOICEVOX HTTP API を呼び出して音声合成し、WAV を Wyoming Audio チャンクとして HA に返す。
 
 -----
 
@@ -311,7 +335,8 @@ hermes_data (Docker volume)
 |Hermes Agent API|8642 |HTTP/WS      |LAN 全体（要 API キー）|
 |openWakeWord    |10400|TCP (Wyoming)|localhost のみ    |
 |Whisper (STT)   |10300|TCP (Wyoming)|localhost のみ    |
-|Piper (TTS)     |10200|TCP (Wyoming)|localhost のみ    |
+|VOICEVOX Engine |50021|HTTP         |Docker 内部のみ   |
+|VOICEVOX (TTS)  |10200|TCP (Wyoming)|localhost のみ    |
 
 
 > **注意:** Ollama は認証機能を持たないため、必要であればファイアウォールで LAN 内に制限すること。
@@ -322,10 +347,11 @@ hermes_data (Docker volume)
 hermes → ollama:11434    # HTTP（Docker 内部 DNS 解決）
 HA     → localhost:10400 # Wyoming TCP（host ネットワーク、openWakeWord）
 HA     → localhost:10300 # Wyoming TCP（host ネットワーク、Whisper STT）
-HA     → localhost:10200 # Wyoming TCP（host ネットワーク、Piper TTS）
+HA     → localhost:10200 # Wyoming TCP（host ネットワーク、VOICEVOX TTS）
+wyoming-voicevox → voicevox-engine:50021 # HTTP（Docker 内部 DNS 解決）
 ```
 
-Home Assistant は `network_mode: host` のため、Wyoming コンテナ（openWakeWord / Whisper / Piper）には `localhost:<port>` で直接アクセスする。Hermes と Ollama は Docker の内部ネットワーク（デフォルトブリッジ）でコンテナ名 DNS 解決を使う。
+Home Assistant は `network_mode: host` のため、Wyoming コンテナ（openWakeWord / Whisper / wyoming-voicevox）には `localhost:<port>` で直接アクセスする。Hermes と Ollama は Docker の内部ネットワーク（デフォルトブリッジ）でコンテナ名 DNS 解決を使う。
 
 -----
 
@@ -345,6 +371,10 @@ rpi-voice-agent/
 │
 ├── pull-model.sh                   # Ollama モデル追加
 ├── update.sh                       # イメージ更新
+│
+├── wyoming-voicevox/
+│   ├── Dockerfile                  # wyoming-voicevox コンテナイメージ定義
+│   └── wyoming_voicevox.py         # Wyoming ↔ VOICEVOX HTTP API アダプター
 │
 ├── scripts/
 │   ├── ha-setup.sh                 # HA API 自動設定（setup コンテナ内で実行）
@@ -427,7 +457,7 @@ setup コンテナ起動（depends_on 全依存 healthy 後）
   ├─ Wyoming Integration 追加 × 3（/api/config/config_entries/flow）
   │    ├─ openWakeWord :10400
   │    ├─ Whisper STT  :10300
-  │    └─ Piper TTS    :10200
+  │    └─ VOICEVOX TTS :10200
   ├─ Hermes Agent Integration 追加（/api/config/config_entries/flow）
   └─ ha-pipeline-setup.py（Assist パイプライン自動作成）
        ├─ Wyoming エンティティ登録待ち（最大 90s）
@@ -463,7 +493,7 @@ setup コンテナ起動（depends_on 全依存 healthy 後）
 |`WAKE_WORD`|任意|`ok_nabu`|ウェイクワード名|
 |`WHISPER_MODEL`|任意|`tiny-int8`|Whisper モデルサイズ|
 |`WHISPER_LANGUAGE`|任意|`ja`|Whisper 認識言語|
-|`PIPER_VOICE`|任意|`ja_JP-takumi-medium`|Piper 使用音声|
+|`VOICEVOX_SPEAKER`|任意|`3`|VOICEVOX 話者 ID（3=四国めたん, 2=ずんだもん, 8=春日部つむぎ）|
 |`PULSE_SERVER`|任意|（未設定）|PulseAudio サーバー（`setup.sh --mac` が `tcp:host.docker.internal:4713` を `.env` に自動設定）|
 |`DBUS_RUN_DIR`|任意|`/run/dbus`|dbus ソケットのホストパス（`setup.sh --mac` が `~/.rpi-voice-agent/dbus` を `.env` に自動設定）|
 
@@ -475,8 +505,11 @@ setup コンテナ起動（depends_on 全依存 healthy 後）
 |-------------|-----------------------------|--------|-------|-------|------------|
 |ollama       |`ollama list`                |30s     |10s    |5      |30s         |
 |homeassistant|`curl http://localhost:8123/`|60s     |10s    |5      |60s         |
-|openwakeword |`nc -z localhost 10400`      |30s     |5s     |3      |15s         |
-|hermes       |`curl /health`               |30s     |10s    |5      |45s         |
+|openwakeword    |python3 TCP socket check (10400)|30s     |5s     |3      |15s         |
+|wyoming-whisper |python3 TCP socket check (10300)|30s     |5s     |3      |30s         |
+|voicevox-engine |`GET /version` (HTTP)           |30s     |10s    |5      |60s         |
+|wyoming-voicevox|python3 TCP socket check (10200)|30s     |5s     |3      |30s         |
+|hermes          |`curl /health`                  |30s     |10s    |5      |45s         |
 
 -----
 
@@ -486,7 +519,6 @@ setup コンテナ起動（depends_on 全依存 healthy 後）
 |--------------------|--------------------------------------|-------------|
 |Ollama モデルファイル      |Docker volume `ollama_data`           |volume で永続化  |
 |Whisper モデルファイル     |Docker volume `whisper_data`          |volume で永続化  |
-|Piper 音声ファイル        |Docker volume `piper_data`            |volume で永続化  |
 |Hermes 記憶・スキル       |Docker volume `hermes_data`           |volume で永続化  |
 |HA 設定ファイル           |`./config/homeassistant/`             |Git 管理（一部除外） |
 |openWakeWord カスタムモデル|`./config/openwakeword/custom_models/`|Git 管理       |
