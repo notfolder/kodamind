@@ -13,4 +13,9 @@ RUN printf 'pcm.!default pulse\nctl.!default pulse\n' > /etc/asound.conf
 
 RUN pip install --no-cache-dir wyoming-satellite
 
+# Patch _send_run_pipeline: add restart_on_end=True so HA auto-restarts
+# the pipeline after TTS without waiting for another RunSatellite.
+COPY satellite/patch_satellite.py /tmp/patch_satellite.py
+RUN python3 /tmp/patch_satellite.py
+
 EXPOSE 10700
