@@ -201,8 +201,21 @@ else
     -d "{\"url\": \"${OLLAMA_API_URL}\"}") || ollama_entry_resp=""
 
   ollama_entry_type=$(echo "${ollama_entry_resp:-}" | jq -r '.type // "unknown"' 2>/dev/null || echo "unknown")
-  # HA の create_entry レスポンスは entry_id を .result フィールドに格納する
-  ollama_entry_id=$(echo "${ollama_entry_resp:-}" | jq -r '.result // .entry_id // empty' 2>/dev/null || true)
+  # HA 2026.x: create_entry の .result はオブジェクト → .result.entry_id
+  # HA 2025.x: create_entry の .result は entry_id 文字列
+  _extract_entry_id() {
+    local resp="$1"
+    local id
+    # .result.entry_id (2026.x形式)
+    id=$(echo "${resp:-}" | jq -r '.result.entry_id // empty' 2>/dev/null || true)
+    [[ -n "$id" ]] && echo "$id" && return
+    # .result が文字列 (2025.x形式)
+    id=$(echo "${resp:-}" | jq -r 'if (.result | type) == "string" then .result else empty end' 2>/dev/null || true)
+    [[ -n "$id" ]] && echo "$id" && return
+    # .entry_id (旧形式)
+    echo "${resp:-}" | jq -r '.entry_id // empty' 2>/dev/null || true
+  }
+  ollama_entry_id=$(_extract_entry_id "$ollama_entry_resp")
 
   # form が返った場合はモデル選択ステップあり（旧 HA 形式）
   if [[ "$ollama_entry_type" == "form" ]]; then
@@ -211,18 +224,18 @@ else
       -H "Content-Type: application/json" \
       -d "{\"model\": \"${OLLAMA_MODEL}\"}") || ollama_entry_resp=""
     ollama_entry_type=$(echo "${ollama_entry_resp:-}" | jq -r '.type // "unknown"' 2>/dev/null || echo "unknown")
-    ollama_entry_id=$(echo "${ollama_entry_resp:-}" | jq -r '.result // .entry_id // empty' 2>/dev/null || true)
+    ollama_entry_id=$(_extract_entry_id "$ollama_entry_resp")
   fi
 
   if [[ "$ollama_entry_type" == "create_entry" ]]; then
-    # config flow レスポンスから entry_id を取れなかった場合、config_entries API から取得
+    # config flow から取れなかった場合は config_entries/entry API から検索
     if [[ -z "$ollama_entry_id" ]]; then
-      ollama_entry_id=$(curl -sf "${HA_URL}/api/config/config_entries/" \
+      ollama_entry_id=$(curl -sf "${HA_URL}/api/config/config_entries/entry" \
         -H "Authorization: Bearer ${ACCESS_TOKEN}" \
         | jq -r '[.[] | select(.domain == "ollama")] | .[0].entry_id // empty' 2>/dev/null || true)
       [[ -n "$ollama_entry_id" ]] && log "  Found Ollama entry via API: ${ollama_entry_id}"
     fi
-    log "  Ollama integration added (entry: ${ollama_entry_id})"
+    log "  Ollama integration added (entry_id: ${ollama_entry_id})"
 
     # HA 2025+: subentry（AI エージェント）を追加してモデルを設定
     # エンドポイント: /api/config/config_entries/subentries/flow（複数形）
