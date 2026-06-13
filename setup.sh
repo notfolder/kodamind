@@ -145,6 +145,46 @@ else
   set_env_var "DBUS_RUN_DIR" "${DBUS_DIR}"
   set_env_var "PULSE_SERVER" "tcp:host.docker.internal:4713"
   log "Mac settings written to .env (PULSE_SERVER, DBUS_RUN_DIR)"
+
+  # PulseAudio のデフォルト入力ソースをマイクに設定
+  # .env の PULSE_MIC_SOURCE が設定されていればそれを使用、未設定なら自動検出
+  log "Setting PulseAudio default source to microphone..."
+  if [[ -n "${PULSE_MIC_SOURCE:-}" ]]; then
+    MIC_SOURCE="${PULSE_MIC_SOURCE}"
+    log "  Using PULSE_MIC_SOURCE from .env: ${MIC_SOURCE}"
+  else
+    MIC_SOURCE=$(pactl list sources 2>/dev/null \
+      | grep -B1 'Description:.*[Mm]ic\|Description:.*マイク' \
+      | grep 'Name:' | head -1 | awk '{print $2}')
+    [[ -n "$MIC_SOURCE" ]] && log "  Auto-detected: ${MIC_SOURCE}" \
+      || warn "  Microphone not found. Set PULSE_MIC_SOURCE in .env manually."
+    warn "  Tip: run 'pactl list sources short' to see available sources"
+    warn "  Then set PULSE_MIC_SOURCE=<name> in .env"
+  fi
+  if [[ -n "$MIC_SOURCE" ]]; then
+    pactl set-default-source "$MIC_SOURCE" 2>/dev/null && \
+      log "  Default source set: ${MIC_SOURCE}" || \
+      warn "  Could not set default source"
+  fi
+
+  # PulseAudio のデフォルト出力シンクをスピーカーに設定
+  log "Setting PulseAudio default sink to speaker..."
+  if [[ -n "${PULSE_SINK:-}" ]]; then
+    SINK_NAME="${PULSE_SINK}"
+    log "  Using PULSE_SINK from .env: ${SINK_NAME}"
+  else
+    SINK_NAME=$(pactl list sinks 2>/dev/null \
+      | grep -B1 'Description:.*[Ss]peaker\|Description:.*スピーカー' \
+      | grep 'Name:' | head -1 | awk '{print $2}')
+    [[ -n "$SINK_NAME" ]] && log "  Auto-detected: ${SINK_NAME}" \
+      || warn "  Speaker not found. Set PULSE_SINK in .env manually."
+    warn "  Tip: run 'pactl list sinks short' to see available sinks"
+  fi
+  if [[ -n "$SINK_NAME" ]]; then
+    pactl set-default-sink "$SINK_NAME" 2>/dev/null && \
+      log "  Default sink set: ${SINK_NAME}" || \
+      warn "  Could not set default sink"
+  fi
 fi
 
 # ─── 4. HA 設定ファイルを初期化 ─────────────────
@@ -204,8 +244,12 @@ else
 fi
 
 # ─── 8. setup コンテナイメージをビルド ───────────
-step "Building setup container image"
-docker compose build setup
+step "Building container images"
+if [[ "$MAC_MODE" == "true" ]]; then
+  docker compose --profile mac build setup wyoming-satellite
+else
+  docker compose build setup
+fi
 
 # ─── 9. Docker イメージを事前取得 ───────────────
 step "Pulling Docker images (this may take several minutes on Pi 5)"
@@ -213,7 +257,11 @@ docker compose pull
 
 # ─── 10. スタック起動 ───────────────────────────
 step "Starting all services"
-docker compose up -d
+if [[ "$MAC_MODE" == "true" ]]; then
+  docker compose --profile mac up -d
+else
+  docker compose up -d
+fi
 
 log "Waiting for services to start..."
 sleep 15

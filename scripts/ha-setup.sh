@@ -90,12 +90,12 @@ log "Onboarding complete"
 # Wyoming は HTTP ヘルスチェックを持たないため nc で確認
 log "Waiting for Wyoming services..."
 wait_tcp() {
-  local port="$1" label="$2"
+  local port="$1" label="$2" max_wait="${3:-120}"
   local elapsed=0
   echo -n "  ${label} (TCP:${port})..."
   until nc -z localhost "$port" 2>/dev/null; do
     sleep 3; elapsed=$((elapsed + 3)); printf "."
-    if [[ $elapsed -ge 120 ]]; then
+    if [[ $elapsed -ge $max_wait ]]; then
       echo " TIMEOUT"
       warn "${label} did not become ready. Wyoming integration for port ${port} will be skipped."
       return 1
@@ -108,9 +108,11 @@ wait_tcp() {
 wyoming_10400_ready=false
 wyoming_10300_ready=false
 wyoming_10200_ready=false
-wait_tcp 10400 "openWakeWord" && wyoming_10400_ready=true
-wait_tcp 10300 "Whisper STT"  && wyoming_10300_ready=true
-wait_tcp 10200 "VOICEVOX TTS" && wyoming_10200_ready=true
+wyoming_10700_ready=false
+wait_tcp 10400 "openWakeWord"      && wyoming_10400_ready=true
+wait_tcp 10300 "Whisper STT"       && wyoming_10300_ready=true
+wait_tcp 10200 "VOICEVOX TTS"      && wyoming_10200_ready=true
+wait_tcp 10700 "satellite" 60      && wyoming_10700_ready=true || true
 
 # ─── 6. Wyoming Integration 追加 ─────────────────────
 add_wyoming_integration() {
@@ -145,9 +147,10 @@ add_wyoming_integration() {
   fi
 }
 
-[[ "$wyoming_10400_ready" == "true" ]] && add_wyoming_integration "openWakeWord" 10400
-[[ "$wyoming_10300_ready" == "true" ]] && add_wyoming_integration "Whisper STT"  10300
-[[ "$wyoming_10200_ready" == "true" ]] && add_wyoming_integration "VOICEVOX TTS" 10200
+[[ "$wyoming_10400_ready" == "true" ]] && add_wyoming_integration "openWakeWord"      10400
+[[ "$wyoming_10300_ready" == "true" ]] && add_wyoming_integration "Whisper STT"       10300
+[[ "$wyoming_10200_ready" == "true" ]] && add_wyoming_integration "VOICEVOX TTS"      10200
+[[ "$wyoming_10700_ready" == "true" ]] && add_wyoming_integration "wyoming-satellite" 10700
 
 # ─── 7. Hermes Agent Integration 追加 ────────────
 HERMES_URL="${HERMES_URL:-http://localhost:8642}"

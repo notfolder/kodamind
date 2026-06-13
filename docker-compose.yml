@@ -108,6 +108,7 @@ services:
       --preload-model ${WAKE_WORD:-ok_nabu}
       --custom-model-dir /custom
       --debug
+      --debug-probability
     environment:
       - TZ=${TZ:-Asia/Tokyo}
     healthcheck:
@@ -231,7 +232,50 @@ services:
       start_period: 45s
 
   # ─────────────────────────────────────────────
-  # 8. setup — ワンショット初期化コンテナ
+  # 8. wyoming-satellite（Mac 開発環境用音声サテライト）
+  #    PulseAudio TCP 経由で Mac マイク/スピーカーを使用
+  #    profiles: [mac] → setup.sh --mac 時のみ起動
+  # ─────────────────────────────────────────────
+  wyoming-satellite:
+    build:
+      context: .
+      dockerfile: satellite/Dockerfile
+    container_name: wyoming-satellite
+    platform: linux/arm64
+    profiles: [mac]
+    restart: unless-stopped
+    depends_on:
+      openwakeword:
+        condition: service_healthy
+    ports:
+      - "10700:10700"
+    volumes:
+      - ./sounds:/sounds:ro
+    environment:
+      - TZ=${TZ:-Asia/Tokyo}
+      - PULSE_SERVER=${PULSE_SERVER:-tcp:host.docker.internal:4713}
+    command: >
+      python3 -m wyoming_satellite
+      --name "kodamind"
+      --uri tcp://0.0.0.0:10700
+      --mic-command "arecord -D pulse -r 16000 -c 1 -f S16_LE -t raw -q"
+      --snd-command "aplay -D pulse -r 24000 -c 1 -f S16_LE -t raw -q"
+      --snd-command-rate 24000
+      --snd-command-channels 1
+      --snd-command-width 2
+      --wake-uri tcp://openwakeword:10400
+      --wake-word-name ${WAKE_WORD:-ok_nabu}
+      --awake-wav /sounds/awake.wav
+      --done-wav /sounds/done.wav
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(3); s.connect(('localhost', 10700)); s.close()\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ─────────────────────────────────────────────
+  # 9. setup — ワンショット初期化コンテナ
   #    HA オンボーディング・Wyoming Integration・
   #    Assist パイプライン作成を担う。
   #    将来の初期化処理はすべてここに追加する。
