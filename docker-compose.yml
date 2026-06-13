@@ -108,7 +108,6 @@ services:
       --preload-model ${WAKE_WORD:-ok_nabu}
       --custom-model-dir /custom
       --debug
-      --debug-probability
     environment:
       - TZ=${TZ:-Asia/Tokyo}
     healthcheck:
@@ -263,8 +262,6 @@ services:
       --snd-command-rate 24000
       --snd-command-channels 1
       --snd-command-width 2
-      --wake-uri tcp://openwakeword:10400
-      --wake-word-name ${WAKE_WORD:-ok_nabu}
       --awake-wav /sounds/awake.wav
       --done-wav /sounds/done.wav
     healthcheck:
