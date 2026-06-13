@@ -201,7 +201,8 @@ else
     -d "{\"url\": \"${OLLAMA_API_URL}\"}") || ollama_entry_resp=""
 
   ollama_entry_type=$(echo "${ollama_entry_resp:-}" | jq -r '.type // "unknown"' 2>/dev/null || echo "unknown")
-  ollama_entry_id=$(echo "${ollama_entry_resp:-}" | jq -r '.entry_id // empty' 2>/dev/null || true)
+  # HA の create_entry レスポンスは entry_id を .result フィールドに格納する
+  ollama_entry_id=$(echo "${ollama_entry_resp:-}" | jq -r '.result // .entry_id // empty' 2>/dev/null || true)
 
   # form が返った場合はモデル選択ステップあり（旧 HA 形式）
   if [[ "$ollama_entry_type" == "form" ]]; then
@@ -210,7 +211,7 @@ else
       -H "Content-Type: application/json" \
       -d "{\"model\": \"${OLLAMA_MODEL}\"}") || ollama_entry_resp=""
     ollama_entry_type=$(echo "${ollama_entry_resp:-}" | jq -r '.type // "unknown"' 2>/dev/null || echo "unknown")
-    ollama_entry_id=$(echo "${ollama_entry_resp:-}" | jq -r '.entry_id // empty' 2>/dev/null || true)
+    ollama_entry_id=$(echo "${ollama_entry_resp:-}" | jq -r '.result // .entry_id // empty' 2>/dev/null || true)
   fi
 
   if [[ "$ollama_entry_type" == "create_entry" ]]; then
@@ -237,7 +238,7 @@ else
         sub_result=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/subentries/flow/${sub_flow_id}" \
           -H "Authorization: Bearer ${ACCESS_TOKEN}" \
           -H "Content-Type: application/json" \
-          -d "{\"name\": \"Ollama Conversation\", \"model\": \"${OLLAMA_MODEL}\"}") || sub_result=""
+          -d "{\"name\": \"Ollama Conversation\", \"model\": \"${OLLAMA_MODEL}\", \"think\": false}") || sub_result=""
 
         sub_type=$(echo "${sub_result:-}" | jq -r '.type // "unknown"' 2>/dev/null || echo "unknown")
         if [[ "$sub_type" == "create_entry" ]]; then
