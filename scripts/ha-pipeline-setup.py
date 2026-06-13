@@ -196,7 +196,7 @@ def _discover_via_states():
     return stt_e, tts_e, ww_e
 
 
-def wait_for_ollama_entity(timeout=60):
+def wait_for_ollama_entity(timeout=120):
     """Ollama conversation エンティティが HA に現れるまでポーリングする。"""
     print(f"Waiting for Ollama conversation entity (model: {OLLAMA_MODEL})...")
     deadline = time.time() + timeout

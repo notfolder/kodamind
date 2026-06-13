@@ -214,22 +214,30 @@ else
   fi
 
   if [[ "$ollama_entry_type" == "create_entry" ]]; then
+    # config flow レスポンスから entry_id を取れなかった場合、config_entries API から取得
+    if [[ -z "$ollama_entry_id" ]]; then
+      ollama_entry_id=$(curl -sf "${HA_URL}/api/config/config_entries/" \
+        -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+        | jq -r '[.[] | select(.domain == "ollama")] | .[0].entry_id // empty' 2>/dev/null || true)
+      [[ -n "$ollama_entry_id" ]] && log "  Found Ollama entry via API: ${ollama_entry_id}"
+    fi
     log "  Ollama integration added (entry: ${ollama_entry_id})"
 
     # HA 2025+: subentry（AI エージェント）を追加してモデルを設定
+    # エンドポイント: /api/config/config_entries/subentries/flow（複数形）
+    # handler: [entry_id, "conversation"]（subentry_type を指定）
     if [[ -n "$ollama_entry_id" ]]; then
-      sub_flow=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/subentry/flow" \
+      sub_flow_id=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/subentries/flow" \
         -H "Authorization: Bearer ${ACCESS_TOKEN}" \
         -H "Content-Type: application/json" \
-        -d "{\"handler\": [\"${ollama_entry_id}\", \"create_subentry\"]}") || sub_flow=""
-
-      sub_flow_id=$(echo "${sub_flow:-}" | jq -r '.flow_id // empty' 2>/dev/null || true)
+        -d "{\"handler\": [\"${ollama_entry_id}\", \"conversation\"]}" \
+        | jq -r '.flow_id // empty' 2>/dev/null || true)
 
       if [[ -n "$sub_flow_id" ]]; then
-        sub_result=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/subentry/flow/${sub_flow_id}" \
+        sub_result=$(curl -sf -X POST "${HA_URL}/api/config/config_entries/subentries/flow/${sub_flow_id}" \
           -H "Authorization: Bearer ${ACCESS_TOKEN}" \
           -H "Content-Type: application/json" \
-          -d "{\"model\": \"${OLLAMA_MODEL}\"}") || sub_result=""
+          -d "{\"name\": \"Ollama Conversation\", \"model\": \"${OLLAMA_MODEL}\"}") || sub_result=""
 
         sub_type=$(echo "${sub_result:-}" | jq -r '.type // "unknown"' 2>/dev/null || echo "unknown")
         if [[ "$sub_type" == "create_entry" ]]; then
@@ -238,7 +246,7 @@ else
           warn "  Ollama subentry result: '${sub_type}'. Add agent manually: Settings → Integrations → Ollama → Add entry"
         fi
       else
-        warn "  Ollama subentry flow not available. Add agent manually: Settings → Integrations → Ollama → Add entry"
+        warn "  Ollama subentry flow start failed. Add agent manually: Settings → Integrations → Ollama → Add entry"
       fi
     fi
   else
